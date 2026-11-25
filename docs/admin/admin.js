@@ -85,7 +85,7 @@ $('#admin-form').addEventListener('submit', async event => {
   const key = normalizeId($('#admin-id').value);
   const button = event.currentTarget.querySelector('button[type="submit"]');
   $('#login-error').textContent = '';
-  if (!/^PA-[0-9A-F]{32}$/.test(key)) {
+  if (!/^(?:PA-[0-9A-F]{32}|[0-9]{6})$/.test(key)) {
     $('#login-error').textContent = '请输入完整的管理员 ID。';
     return;
   }

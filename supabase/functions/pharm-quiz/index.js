@@ -3,7 +3,7 @@ const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const allowedOrigins = new Set(['https://ddddddking.github.io']);
 const credentialPatterns = {
   student: /^PQ-[0-9A-F]{32}$/,
-  admin: /^PA-[0-9A-F]{32}$/
+  admin: /^(?:PA-[0-9A-F]{32}|[0-9]{6})$/
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const questionId = /^[1-9]-[0-9]{1,3}$/;
