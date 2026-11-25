@@ -1,4 +1,4 @@
-import { request } from './api.js';
+import { request } from './api.js?v=3';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

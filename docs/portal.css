@@ -29,8 +29,8 @@ button:disabled { cursor: default; }
 .admin-shell h2 { font-size: 17px; margin: 0 0 10px; }
 .admin-card { background: var(--surf); border: 1px solid var(--line); padding: 18px; border-radius: var(--r); margin-top: 19px; box-shadow: var(--shadow); }
 .admin-card p { color: var(--ink2); font-size: 14px; margin: 3px 0 13px; }
-.admin-form { grid-template-columns: minmax(120px, 330px) auto; justify-content: start; align-items: end; }
-.admin-form label { grid-column: 1 / -1; }
+.admin-form { grid-template-columns: minmax(125px, 290px) minmax(150px, 290px) auto; justify-content: start; align-items: end; }
+.admin-field { display: grid; gap: 6px; }
 .admin-form .btn { padding-inline: 13px; white-space: nowrap; }
 .issued { margin-top: 14px; padding: 12px; border-radius: 10px; background: var(--accent-soft); }
 .issued div { display: flex; align-items: center; gap: 8px; }
@@ -48,4 +48,5 @@ button:disabled { cursor: default; }
   .account-bar { padding: 7px 12px; gap: 6px 9px; }
   .admin-shell { padding: 22px 12px 40px; }
   .admin-card { padding: 14px; }
+  .admin-form { grid-template-columns: minmax(0, 1fr); justify-content: stretch; }
 }

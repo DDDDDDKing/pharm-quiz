@@ -1,4 +1,4 @@
-import {normalizeId, request} from '../api.js';
+import {isValidId, request} from '../api.js?v=3';
 
 const $ = selector => document.querySelector(selector);
 const seenFormat = new Intl.DateTimeFormat('zh-CN', {
@@ -26,7 +26,7 @@ function render(students) {
     ];
     for (const value of values) row.insertCell().textContent = String(value);
     const label = document.createElement('small');
-    label.textContent = 'ID 尾号 ' + student.hint;
+    label.textContent = student.hint ? 'ID 尾号 ' + student.hint : 'ID 已设置';
     row.cells[0].append(document.createElement('br'),label);
 
     const button = document.createElement('button');
@@ -53,6 +53,7 @@ function signOut(message = '') {
   $('#dashboard').hidden = true;
   $('#login').hidden = false;
   $('#login-error').textContent = message;
+  $('#new-student-id').value = '';
   $('#student-label').value = '';
   $('#issued-id').value = '';
   $('#issued').hidden = true;
@@ -82,10 +83,10 @@ async function run(button, action) {
 
 $('#admin-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const key = normalizeId($('#admin-id').value);
+  const key = $('#admin-id').value;
   const button = event.currentTarget.querySelector('button[type="submit"]');
   $('#login-error').textContent = '';
-  if (!/^(?:PA-[0-9A-F]{32}|[0-9]{6})$/.test(key)) {
+  if (!isValidId(key)) {
     $('#login-error').textContent = '请输入完整的管理员 ID。';
     return;
   }
@@ -110,11 +111,15 @@ $('#admin-form').addEventListener('submit', async event => {
 $('#add-form').addEventListener('submit', event => {
   event.preventDefault();
   const button = event.currentTarget.querySelector('button[type="submit"]');
+  const input = $('#new-student-id');
+  const studentId = input.value;
   const label = $('#student-label').value.trim();
-  if (!label) { feedback('请输入姓名或备注。', true); return; }
+  if (!isValidId(studentId)) { feedback('请输入要开通的刷题 ID。', true); return; }
+  $('#issued').hidden = true;
   void run(button, async (id, current) => {
-    const issued = await request('admin', id, 'add', {label});
+    const issued = await request('admin', id, 'add', {studentId, label});
     if (session !== current) return;
+    input.value = '';
     $('#student-label').value = '';
     $('#issued-id').value = issued.credential;
     $('#issued').hidden = false;

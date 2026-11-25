@@ -1,8 +1,13 @@
 const endpoint = 'https://qjnqnchqqbuzjvlkytjl.supabase.co/functions/v1/pharm-quiz';
 const publishableKey = 'sb_publishable_aIMDQatzimHuYaBz9v9E0Q_0ILIq4k4';
 
+// Older page modules can still be open during a Pages deployment.
 export function normalizeId(value) {
   return value.trim().toUpperCase();
+}
+
+export function isValidId(value) {
+  return value.length <= 128 && value.trim().length > 0 && !/[\r\n\0]/.test(value);
 }
 
 export async function request(role, credential, action, details = {}) {
@@ -25,7 +30,10 @@ export async function request(role, credential, action, details = {}) {
   }
   if (!response.ok) {
     const denied = data.error === 'access_denied';
-    const error = new Error(denied ? 'ID 无效、未开通或已停用。' : '服务器暂未完成请求，请重试。');
+    const message = denied ? 'ID 无效、未开通或已停用。'
+      : data.error === 'id_in_use' ? '这个 ID 已被使用，请填写另一个。'
+      : '服务器暂未完成请求，请重试。';
+    const error = new Error(message);
     error.denied = denied;
     throw error;
   }

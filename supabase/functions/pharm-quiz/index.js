@@ -1,16 +1,14 @@
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const allowedOrigins = new Set(['https://ddddddking.github.io']);
-const credentialPatterns = {
-  student: /^PQ-[0-9A-F]{32}$/,
-  admin: /^(?:PA-[0-9A-F]{32}|[0-9]{6})$/
-};
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const questionId = /^[1-9]-[0-9]{1,3}$/;
 const allowedModes = new Set(['seq', 'random', 'wrong', 'fav', 'exam', 'search', 'single', 'review']);
 const maxBody = 512_000;
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const isValidId = value => typeof value === 'string' && value.length <= 128
+  && value.trim().length > 0 && value.isWellFormed() && !/[\r\n\0]/.test(value);
 const isInt = (value, max) => Number.isSafeInteger(value) && value >= 0 && value <= max;
 const isSection = value => /^s[0-8]$/.test(value);
 const isSelection = value => Array.isArray(value) && value.length > 0 && value.length <= 6
@@ -91,8 +89,7 @@ Deno.serve(async req => {
   }
   if (!isObject(input)) return reply({error:'invalid_request'}, 400);
   const { role, action, credential } = input;
-  if ((role !== 'student' && role !== 'admin') || typeof credential !== 'string'
-      || !credentialPatterns[role].test(credential)) return reply({error:'access_denied'}, 403);
+  if ((role !== 'student' && role !== 'admin') || !isValidId(credential)) return reply({error:'access_denied'}, 403);
 
   let body = {};
   if (role === 'student') {
@@ -102,8 +99,9 @@ Deno.serve(async req => {
     } else if (action !== 'login') {
       return reply({error:'invalid_request'}, 400);
     }
-  } else if (action === 'add' && typeof input.label === 'string' && input.label.trim().length > 0 && input.label.trim().length <= 80) {
-    body = {label:input.label.trim()};
+  } else if (action === 'add' && isValidId(input.studentId) && typeof input.label === 'string'
+      && input.label.length <= 80 && input.label.isWellFormed() && !input.label.includes('\0')) {
+    body = {student_id:input.studentId, label:input.label.trim() || '学员'};
   } else if (action === 'set_active' && typeof input.account === 'string' && uuid.test(input.account) && typeof input.active === 'boolean') {
     body = {account:input.account, active:input.active};
   } else if (action !== 'list') {
@@ -129,7 +127,10 @@ Deno.serve(async req => {
       return reply({error:'service_unavailable'}, 503);
     }
     const result = await upstream.json();
-    if (result.error) return reply(result, result.error === 'access_denied' ? 403 : 404);
+    if (result.error) {
+      const status = {access_denied:403, id_in_use:409, invalid_request:400};
+      return reply(result, status[result.error] || 404);
+    }
     return reply(result);
   } catch (error) {
     console.error('Pharmacology request failed', role, action, error?.name);

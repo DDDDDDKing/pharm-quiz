@@ -1,5 +1,5 @@
-import {normalizeId, request} from './api.js';
-import {connectProgress, emptyProgress} from './student-sync.js';
+import {isValidId, request} from './api.js?v=3';
+import {connectProgress, emptyProgress} from './student-sync.js?v=3';
 
 let QS = [], SEC = [], QMAP = new Map(), BY_SEC = [];
 let DB = emptyProgress();
@@ -829,10 +829,10 @@ $('#student-form').addEventListener('submit', async event => {
   event.preventDefault();
   const input = $('#student-id');
   const submit = event.currentTarget.querySelector('button[type="submit"]');
-  const credential = normalizeId(input.value);
+  const credential = input.value;
   $('#login-error').textContent = '';
-  if (!/^PQ-[0-9A-F]{32}$/.test(credential)) {
-    $('#login-error').textContent = '请输入管理端发给你的完整刷题 ID。';
+  if (!isValidId(credential)) {
+    $('#login-error').textContent = '请输入管理端发给你的刷题 ID。';
     return;
   }
   submit.disabled = true;

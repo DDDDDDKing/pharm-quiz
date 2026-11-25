@@ -9,7 +9,7 @@
   <title>药理学刷题 · 管理端</title>
   <link rel="icon" href="../icon.svg">
   <link rel="stylesheet" href="../quiz.css">
-  <link rel="stylesheet" href="../portal.css">
+  <link rel="stylesheet" href="../portal.css?v=3">
 </head>
 <body>
 <section class="portal" id="login">
@@ -19,29 +19,35 @@
     <p>开通刷题 ID，查看学习进度</p>
     <form class="portal-form" id="admin-form">
       <label for="admin-id">管理员 ID</label>
-      <input id="admin-id" type="password" autocomplete="off" spellcheck="false" placeholder="输入管理员 ID" required maxlength="40">
+      <input id="admin-id" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="输入管理员 ID" required maxlength="128">
       <p id="login-error" class="form-error" role="alert"></p>
       <button class="btn primary" type="submit">登录管理端</button>
     </form>
-    <a class="portal-link" href="../">返回用户端</a>
+    <a class="portal-link" href="../?v=3">返回用户端</a>
   </div>
 </section>
 
 <main class="admin-shell" id="dashboard" hidden>
   <header>
     <h1>刷题管理端</h1>
-    <div><a href="../">打开用户端</a><button type="button" id="sign-out">退出登录</button></div>
+    <div><a href="../?v=3">打开用户端</a><button type="button" id="sign-out">退出登录</button></div>
   </header>
   <section class="admin-card">
     <h2>添加刷题 ID</h2>
     <form id="add-form" class="portal-form admin-form">
-      <label for="student-label">姓名或备注</label>
-      <input id="student-label" type="text" placeholder="用于在管理端区分学员" required maxlength="80" autocomplete="off">
-      <button class="btn primary" type="submit">生成 ID</button>
+      <div class="admin-field">
+        <label for="new-student-id">刷题 ID</label>
+        <input id="new-student-id" type="text" required maxlength="128" autocomplete="off" spellcheck="false" autocapitalize="off">
+      </div>
+      <div class="admin-field">
+        <label for="student-label">姓名或备注（选填）</label>
+        <input id="student-label" type="text" maxlength="80" autocomplete="off">
+      </div>
+      <button class="btn primary" type="submit">添加 ID</button>
     </form>
     <div class="issued" id="issued" hidden>
-      <p>完整 ID 只在生成时显示，请复制后私下发给对应学员。</p>
-      <div><input id="issued-id" type="text" readonly aria-label="新生成的刷题 ID"><button class="btn" type="button" id="copy-id">复制</button></div>
+      <p>请把这个 ID 发给对应学员，对方按原样输入即可登录。</p>
+      <div><input id="issued-id" type="text" readonly aria-label="已开通的刷题 ID"><button class="btn" type="button" id="copy-id">复制</button></div>
     </div>
     <p class="admin-feedback" id="feedback" role="status"></p>
   </section>
@@ -60,6 +66,6 @@
     </div>
   </section>
 </main>
-<script type="module" src="./admin.js?v=2"></script>
+<script type="module" src="./admin.js?v=3"></script>
 </body>
 </html>

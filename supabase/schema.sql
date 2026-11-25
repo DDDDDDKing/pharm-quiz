@@ -168,10 +168,15 @@ begin
     return '{"error":"access_denied"}'::jsonb;
   end if;
   if p_action = 'add' then
-    issued := 'PQ-' || upper(replace(gen_random_uuid()::text,'-',''));
+    issued := p_body->>'student_id';
+    if issued is null or char_length(issued) not between 1 and 128 then
+      return '{"error":"invalid_request"}'::jsonb;
+    end if;
     insert into pharm.accounts (credential_hash, hint, label, role)
-      values (sha256(convert_to(issued,'UTF8')), right(issued,6), p_body->>'label', 'student')
+      values (sha256(convert_to(issued,'UTF8')), right(issued,least(4, char_length(issued)-1)), p_body->>'label', 'student')
+      on conflict (credential_hash) do nothing
       returning id into changed_id;
+    if changed_id is null then return '{"error":"id_in_use"}'::jsonb; end if;
     return jsonb_build_object('credential', issued, 'id', changed_id);
   end if;
   if p_action = 'set_active' then

@@ -18,11 +18,11 @@
     <p>1709 道题，覆盖 9 个部分</p>
     <form id="student-form" class="portal-form">
       <label for="student-id">刷题 ID</label>
-      <input id="student-id" type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="输入管理端发给你的 ID" required maxlength="40">
+      <input id="student-id" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="输入管理端发给你的 ID" required maxlength="128">
       <p id="login-error" class="form-error" role="alert"></p>
       <button class="btn primary" type="submit">登录刷题</button>
     </form>
-    <a class="portal-link" href="./admin/">进入管理端</a>
+    <a class="portal-link" href="./admin/?v=3">进入管理端</a>
   </div>
 </section>
 <div class="app" id="quiz" hidden>
@@ -61,6 +61,6 @@
   </div>
 </div>
 <div class="sheet" id="sheet"><div class="panel" id="sheetPanel"></div></div>
-<script type="module" src="./quiz.js"></script>
+<script type="module" src="./quiz.js?v=3"></script>
 </body>
 </html>
