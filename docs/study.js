@@ -1,6 +1,6 @@
 // Review selection is deterministic and uses the learner's own answer history.
 export function done(state, id) {
-  return !!state.rec[id]?.a || !!state.marked?.[id];
+  return !!state.rec[id]?.a;
 }
 
 export function matches(state, question, filter) {
@@ -10,7 +10,6 @@ export function matches(state, question, filter) {
   if (filter === 'wrong') return state.wrong.includes(id);
   if (filter === 'everwrong') return (state.rec[id]?.a || 0) > (state.rec[id]?.c || 0);
   if (filter === 'fav') return state.fav.includes(id);
-  if (filter === 'notes') return !!state.notes?.[id]?.trim();
   if (filter === 'mastered') return !!state.mastered?.[id];
   return true;
 }
@@ -27,4 +26,13 @@ export function reviewQuestions(questions, state, count, now = Date.now()) {
     return {question,score};
   }).sort((a,b) => b.score-a.score || a.question.sec-b.question.sec || a.question.num-b.question.num)
     .slice(0,count).map(item => item.question.id);
+}
+
+export function answerCardStatus(session, state, id) {
+  const grade = session.ans[id];
+  if (grade && !grade.blank && (session.immediate || session.reviewing)) return grade.ok ? 'right' : 'bad';
+  const picked = !session.reviewing && session.pick[id]?.length;
+  if (!session.immediate && picked) return 'pick';
+  if (state.rec[id]?.a > 0) return state.rec[id].w ? 'previousWrong' : 'previousRight';
+  return picked ? 'pick' : 'blank';
 }

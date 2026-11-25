@@ -4,7 +4,7 @@ grant usage on schema pharm to service_role;
 
 create function pharm.empty_progress() returns jsonb
 language sql immutable set search_path = '' as $$
-  select '{"rec":{},"fav":[],"wrong":[],"pos":{},"hist":{},"autonext":false,"theme":"light","exam":null,"notes":{},"marked":{},"mastered":{}}'::jsonb
+  select '{"rec":{},"fav":[],"wrong":[],"pos":{},"hist":{},"autonext":false,"theme":"light","exam":null,"notes":{},"marked":{},"mastered":{},"clearedAt":{}}'::jsonb
 $$;
 
 create table pharm.accounts (
@@ -76,6 +76,13 @@ declare
   answer_day text;
   selection jsonb;
   counter jsonb;
+  daily jsonb;
+  days jsonb;
+  day_key text;
+  removed_count jsonb;
+  clear_at bigint;
+  stale_wrong text[];
+
   is_correct integer;
   new_rows integer;
   epoch integer;
@@ -105,20 +112,54 @@ begin
         exit;
       end if;
 
+      patch := coalesce(event->'patch', '{}'::jsonb);
+      stale_wrong := array[]::text[];
+      if patch ? 'clearQuestions' then
+        clear_at := (patch#>>'{clearQuestions,at}')::bigint;
+        state := jsonb_set(state, '{clearedAt}', coalesce(state->'clearedAt','{}'::jsonb));
+        for question_id in select jsonb_array_elements_text(patch#>'{clearQuestions,ids}') loop
+          if clear_at < coalesce((state#>>array['clearedAt',question_id])::bigint,0) then continue; end if;
+          state := jsonb_set(state,array['clearedAt',question_id],to_jsonb(clear_at));
+          counter := state#>array['rec',question_id];
+          if coalesce((counter->>'t')::bigint,0) > clear_at then continue; end if;
+          for day_key, removed_count in select key,value from jsonb_each(coalesce(counter->'days','{}'::jsonb)) loop
+            daily := state#>array['hist',day_key];
+            if coalesce((daily->>'n')::integer,0) <= (removed_count->>'n')::integer then
+              state := state #- array['hist',day_key];
+            else
+              state := jsonb_set(state,array['hist',day_key],jsonb_build_object(
+                'n',(daily->>'n')::integer-(removed_count->>'n')::integer,
+                'ok',greatest(0,(daily->>'ok')::integer-(removed_count->>'ok')::integer)));
+            end if;
+          end loop;
+          state := state #- array['rec',question_id];
+          state := jsonb_set(state,'{wrong}',(state->'wrong') - question_id);
+        end loop;
+      end if;
+
       for attempt in select value from jsonb_array_elements(coalesce(event->'attempts', '[]'::jsonb)) loop
         question_id := attempt->>'question';
+        if (attempt->>'time')::bigint <= coalesce((state#>>array['clearedAt',question_id])::bigint,0) then
+          stale_wrong := array_append(stale_wrong,question_id);
+          continue;
+        end if;
         answer_day := attempt->>'day';
         selection := attempt->'selection';
         select data into question from pharm.questions where id = question_id;
         if question is null then continue; end if;
         is_correct := case when selection = question->'a' then 1 else 0 end;
         counter := coalesce(state#>array['rec',question_id], '{}'::jsonb);
+        days := coalesce(counter->'days','{}'::jsonb);
+        daily := days->answer_day;
+        days := jsonb_set(days,array[answer_day],jsonb_build_object(
+          'n',coalesce((daily->>'n')::integer,0)+1,'ok',coalesce((daily->>'ok')::integer,0)+is_correct));
         state := jsonb_set(state, array['rec',question_id], jsonb_build_object(
           'a', coalesce((counter->>'a')::integer,0) + 1,
           'c', coalesce((counter->>'c')::integer,0) + is_correct,
           'w', 1 - is_correct,
           't', attempt->'time',
-          'sel', selection
+          'sel', selection,
+          'days', days
         ));
         counter := coalesce(state#>array['hist',answer_day], '{}'::jsonb);
         state := jsonb_set(state, array['hist',answer_day], jsonb_build_object(
@@ -127,14 +168,13 @@ begin
         ));
       end loop;
 
-      patch := coalesce(event->'patch', '{}'::jsonb);
       state := jsonb_set(state, '{fav}', pharm.membership(state->'fav',patch->'fav'));
-      state := jsonb_set(state, '{wrong}', pharm.membership(state->'wrong',patch->'wrong'));
+      state := jsonb_set(state, '{wrong}', pharm.membership(state->'wrong',(patch->'wrong') - stale_wrong));
       state := jsonb_set(state, '{pos}', (state->'pos') || coalesce(patch->'pos','{}'::jsonb));
       state := jsonb_set(state, '{notes}', coalesce(state->'notes','{}'::jsonb) || coalesce(patch->'notes','{}'::jsonb));
       state := jsonb_set(state, '{marked}', coalesce(state->'marked','{}'::jsonb) || coalesce(patch->'marked','{}'::jsonb));
       state := jsonb_set(state, '{mastered}', coalesce(state->'mastered','{}'::jsonb) || coalesce(patch->'mastered','{}'::jsonb));
-      state := state || (patch - 'fav' - 'wrong' - 'pos' - 'notes' - 'marked' - 'mastered');
+      state := state || (patch - 'fav' - 'wrong' - 'pos' - 'notes' - 'marked' - 'mastered' - 'clearQuestions');
     end loop;
   end if;
 
@@ -204,6 +244,91 @@ $$;
 revoke all on function public.pharm_quiz_ai(text,text) from public,anon,authenticated;
 grant execute on function public.pharm_quiz_ai(text,text) to service_role;
 
+create table pharm.comments (
+  id uuid primary key default gen_random_uuid(),
+  author_id uuid not null references pharm.accounts(id) on delete cascade,
+  question_id text not null references pharm.questions(id),
+  body text not null check (char_length(body) between 1 and 10000),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(author_id, question_id)
+);
+create index comments_by_question on pharm.comments(question_id, created_at desc, id desc);
+create table pharm.comment_bookmarks (
+  learner_id uuid not null references pharm.accounts(id) on delete cascade,
+  comment_id uuid not null references pharm.comments(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key(learner_id, comment_id)
+);
+create index comment_bookmarks_by_comment on pharm.comment_bookmarks(comment_id);
+alter table pharm.comments enable row level security;
+alter table pharm.comment_bookmarks enable row level security;
+grant select, insert, update, delete on pharm.comments to service_role;
+grant select, insert, delete on pharm.comment_bookmarks to service_role;
+
+create function public.pharm_quiz_comments(p_hash text, p_action text, p_body jsonb) returns jsonb
+language plpgsql security invoker set search_path = '' as $$
+declare
+  learner uuid;
+  question text := p_body->>'question';
+  scope text := p_body->>'scope';
+  target uuid;
+  result jsonb;
+begin
+  select id into learner from pharm.accounts
+    where credential_hash = decode(p_hash,'hex') and role='student' and active;
+  if learner is null then return '{"error":"access_denied"}'::jsonb; end if;
+
+  if p_action = 'comment_save' then
+    if not exists (select from pharm.questions where id=question) then return '{"error":"not_found"}'::jsonb; end if;
+    insert into pharm.comments as c (author_id,question_id,body)
+      values (learner,question,p_body->>'text')
+      on conflict (author_id,question_id) do update set
+        body=excluded.body, updated_at=case when c.body=excluded.body then c.updated_at else now() end;
+    return '{"ok":true}'::jsonb;
+  end if;
+
+  if p_action = 'comment_delete' then
+    delete from pharm.comments where author_id=learner and question_id=question;
+    return '{"ok":true}'::jsonb;
+  end if;
+
+  if p_action = 'comment_bookmark' then
+    target := (p_body->>'comment')::uuid;
+    if (p_body->>'saved')::boolean then
+      insert into pharm.comment_bookmarks(learner_id,comment_id)
+        select learner,c.id from pharm.comments c join pharm.accounts a on a.id=c.author_id
+        where c.id=target and c.author_id<>learner and a.active for key share of c
+        on conflict do nothing;
+    else
+      delete from pharm.comment_bookmarks where learner_id=learner and comment_id=target;
+    end if;
+    return '{"ok":true}'::jsonb;
+  end if;
+
+  if p_action <> 'comments' then return '{"error":"invalid_request"}'::jsonb; end if;
+  select coalesce(jsonb_agg(to_jsonb(entries) - 'sort_at' order by entries.sort_at desc, entries.id desc),'[]'::jsonb)
+    into result from (
+      select c.id,c.question_id as question,c.body as text,c.updated_at as "updatedAt",
+        c.author_id=learner as mine,b.comment_id is not null as saved,
+        left(replace(c.author_id::text,'-',''),10) as "authorTag",
+        case when scope='saved' then b.created_at else c.created_at end as sort_at
+      from pharm.comments c
+      join pharm.accounts author on author.id=c.author_id and author.active
+      left join pharm.comment_bookmarks b on b.comment_id=c.id and b.learner_id=learner
+      where (question is null or c.question_id=question)
+        and (scope='all' or (scope='mine' and c.author_id=learner) or (scope='saved' and b.comment_id is not null))
+      order by sort_at desc,c.id desc
+      offset coalesce((p_body->>'page')::integer,0)*25 limit 26
+    ) entries;
+  return jsonb_build_object('items',result,'mine',
+    (select c.body from pharm.comments c where c.author_id=learner and c.question_id=question));
+end;
+$$;
+
+revoke all on function public.pharm_quiz_comments(text,text,jsonb) from public, anon, authenticated;
+grant execute on function public.pharm_quiz_comments(text,text,jsonb) to service_role;
+
 create function public.pharm_quiz_admin(p_hash text, p_action text, p_body jsonb) returns jsonb
 language plpgsql security invoker set search_path = '' as $$
 declare
@@ -217,16 +342,20 @@ begin
   end if;
   if p_action = 'detail' then
     select jsonb_build_object('label',a.label,'state',a.state,
+      'comments',(select coalesce(jsonb_object_agg(c.question_id,c.body),'{}'::jsonb)
+        from pharm.comments c where c.author_id=a.id),
       'questions',(select coalesce(jsonb_agg(q.data order by q.id),'[]'::jsonb)
         from pharm.questions q where a.state->'rec' ? q.id or a.state->'notes' ? q.id
-          or a.state->'marked' ? q.id or a.state->'mastered' ? q.id),
+          or a.state->'marked' ? q.id or a.state->'mastered' ? q.id
+          or exists(select from pharm.comments c where c.author_id=a.id and c.question_id=q.id)),
       'sections',(select data from pharm.sections where id))
       into rows from pharm.accounts a where a.id=(p_body->>'account')::uuid and a.role='student';
     return coalesce(rows,'{"error":"not_found"}'::jsonb);
   end if;
   if p_action = 'ai_save' then
     update pharm.ai_settings set provider=p_body->>'provider', model=p_body->>'model',
-      api_key=case when coalesce(p_body->>'apiKey','')='' then api_key else p_body->>'apiKey' end,
+      api_key=case when coalesce(p_body->>'apiKey','')<>'' then p_body->>'apiKey'
+        when provider=p_body->>'provider' then api_key else '' end,
       enabled=(p_body->>'enabled')::boolean, daily_limit=(p_body->>'dailyLimit')::integer
       where id;
   end if;

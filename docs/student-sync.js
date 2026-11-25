@@ -1,4 +1,4 @@
-import { request } from './api.js?v=4';
+import { request } from './api.js?v=5';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -14,21 +14,47 @@ function decode64(value) {
 }
 
 export function emptyProgress() {
-  return {rec:{}, fav:[], wrong:[], pos:{}, hist:{}, autonext:false, theme:'light', exam:null, notes:{}, marked:{}, mastered:{}};
+  return {rec:{}, fav:[], wrong:[], pos:{}, hist:{}, autonext:false, theme:'light', exam:null, notes:{}, marked:{}, mastered:{}, clearedAt:{}};
+}
+
+export function clearQuestionRecords(state, {ids,at}) {
+  for (const id of ids) {
+    if (at < (state.clearedAt[id] || 0)) continue;
+    state.clearedAt[id] = at;
+    const record = state.rec[id];
+    if ((record?.t || 0) > at) continue;
+    for (const [day, removed] of Object.entries(record?.days || {})) {
+      const total = state.hist[day];
+      if (!total || total.n <= removed.n) delete state.hist[day];
+      else state.hist[day] = {n:total.n-removed.n,ok:Math.max(0,total.ok-removed.ok)};
+    }
+    delete state.rec[id];
+    state.wrong = state.wrong.filter(question => question !== id);
+  }
 }
 
 export function applyEvent(state, event, isCorrect) {
+  if (event.patch.clearQuestions) clearQuestionRecords(state,event.patch.clearQuestions);
+  const staleWrong = new Set();
   for (const attempt of event.attempts) {
     const {question, time, day, selection} = attempt;
+    if (time <= (state.clearedAt[question] || 0)) {
+      staleWrong.add(question);
+      continue;
+    }
     const ok = Number(isCorrect(question, selection));
     const counter = state.rec[question] || {a:0,c:0};
-    state.rec[question] = {a:counter.a+1, c:counter.c+ok, w:1-ok, t:time, sel:selection};
+    const days = counter.days || {};
+    const priorDay = days[day] || {n:0,ok:0};
+    days[day] = {n:priorDay.n+1,ok:priorDay.ok+ok};
+    state.rec[question] = {a:counter.a+1, c:counter.c+ok, w:1-ok, t:time, sel:selection,days};
     const daily = state.hist[day] || {n:0,ok:0};
     state.hist[day] = {n:daily.n+1, ok:daily.ok+ok};
   }
   for (const list of ['fav','wrong']) {
     const items = new Set(state[list]);
     for (const [id, enabled] of Object.entries(event.patch[list] || {})) {
+      if (list === 'wrong' && staleWrong.has(id)) continue;
       if (enabled) items.add(id);
       else items.delete(id);
     }
@@ -175,6 +201,7 @@ export async function connectProgress(credential, login, callbacks) {
       schedule(180);
     },
     flush,
+    comments(action,details) { return request('student',credential,action,details); },
     explain(question) { return request('student',credential,'explain',{question}); },
     async clear() {
       while (inFlight || pending.size) {

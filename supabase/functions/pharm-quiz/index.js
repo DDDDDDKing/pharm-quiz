@@ -41,6 +41,11 @@ function validPatch(patch) {
           (key === 'notes' ? typeof item === 'string' && item.length <= 10000 && item.isWellFormed() && !item.includes('\0')
             : typeof item === 'boolean'));
     }
+    if (key === 'clearQuestions') {
+      return isObject(value) && isInt(value.at, 4_102_444_800_000)
+        && Array.isArray(value.ids) && value.ids.length > 0 && value.ids.length <= 1709
+        && value.ids.every(id => typeof id === 'string' && questionId.test(id));
+    }
     if (key === 'exam') return validExam(value);
     if (key === 'theme') return value === 'light' || value === 'dark';
     if (key === 'autonext') return typeof value === 'boolean';
@@ -97,11 +102,25 @@ Deno.serve(async req => {
   const { role, action, credential } = input;
   if ((role !== 'student' && role !== 'admin') || !isValidId(credential)) return reply({error:'access_denied'}, 403);
 
+  const commentActions = ['comments','comment_save','comment_delete','comment_bookmark'];
+  const commenting = role === 'student' && commentActions.includes(action);
+  const hasQuestion = typeof input.question === 'string' && questionId.test(input.question);
   let body = {};
   if (role === 'student') {
     if (action === 'sync' && isInt(input.epoch, 2_147_483_647) && isInt(input.revision, Number.MAX_SAFE_INTEGER)
         && Array.isArray(input.events) && input.events.length <= 25 && input.events.every(validEvent)) {
       body = {epoch:input.epoch, revision:input.revision, events:input.events};
+    } else if (action === 'comments' && (input.question === null || hasQuestion)
+        && ['all','mine','saved'].includes(input.scope) && isInt(input.page,10000)) {
+      body = {question:input.question, scope:input.scope, page:input.page};
+    } else if (action === 'comment_save' && hasQuestion && typeof input.text === 'string'
+        && input.text.length <= 10000 && input.text.trim() && input.text.isWellFormed() && !input.text.includes('\0')) {
+      body = {question:input.question, text:input.text.trim()};
+    } else if (action === 'comment_delete' && hasQuestion) {
+      body = {question:input.question};
+    } else if (action === 'comment_bookmark' && typeof input.comment === 'string'
+        && uuid.test(input.comment) && typeof input.saved === 'boolean') {
+      body = {comment:input.comment, saved:input.saved};
     } else if (action === 'explain' && typeof input.question === 'string' && questionId.test(input.question)) {
       body = {question:input.question};
     } else if (action !== 'login') {
@@ -127,7 +146,7 @@ Deno.serve(async req => {
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(credential));
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,'0')).join('');
     const explaining = role === 'student' && action === 'explain';
-    const upstream = await fetch(`${supabaseUrl}/rest/v1/rpc/pharm_quiz_${explaining ? 'ai' : role}`, {
+    const upstream = await fetch(`${supabaseUrl}/rest/v1/rpc/pharm_quiz_${explaining ? 'ai' : commenting ? 'comments' : role}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

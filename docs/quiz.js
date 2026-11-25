@@ -1,7 +1,8 @@
-import {isValidId, request} from './api.js?v=4';
-import {connectProgress, emptyProgress} from './student-sync.js?v=4';
+import {isValidId, request} from './api.js?v=5';
+import {connectProgress, emptyProgress, clearQuestionRecords} from './student-sync.js?v=5';
 
-import {done, matches, reviewQuestions} from './study.js?v=4';
+import {done, matches, reviewQuestions, answerCardStatus} from './study.js?v=5';
+import {createComments} from './comments.js?v=5';
 
 let chapter = 0, chapterFilter = 'all', chapterMode = 'practice';
 let aiAnswers = new Map();
@@ -10,6 +11,7 @@ let DB = emptyProgress();
 let previous = structuredClone(DB);
 let attempts = [];
 let sync;
+let mountComments;
 
 function changedMembers(before, after) {
   const old = new Set(before);
@@ -20,17 +22,18 @@ function changedMembers(before, after) {
   return changes;
 }
 
-function saveDB() {
+function saveDB(extra = {}) {
   if (!sync) return;
-  const patch = {};
+  const patch = {...extra};
   for (const list of ['fav', 'wrong']) {
     const changes = changedMembers(previous[list], DB[list]);
+    if (list === 'wrong') for (const id of extra.clearQuestions?.ids || []) delete changes[id];
     if (Object.keys(changes).length) patch[list] = changes;
   }
   for (const key of ['autonext','theme','exam']) {
     if (JSON.stringify(previous[key]) !== JSON.stringify(DB[key])) patch[key] = structuredClone(DB[key]);
   }
-  for (const key of ['notes','marked','mastered']) {
+  for (const key of ['mastered']) {
     const changes = {};
     for (const [id,value] of Object.entries(DB[key])) {
       if (previous[key]?.[id] !== value) changes[id] = value;
@@ -83,15 +86,15 @@ const ICON = {
 
 /* ---------------- computed ---------------- */
 function sectionStat(i){
-  const list = BY_SEC[i]; let done=0, ok=0, tries=0, scored=0;
-  for(const q of list){ const r = DB.rec[q.id]; if(r){ tries += r.a||0; } }
-  for(const q of list){ const r = DB.rec[q.id]; if((r && r.a>0) || DB.marked[q.id]) done++; if(r?.a>0){scored++;if((r.c||0)>0)ok++;} }
-  return {done, ok, acc: pct(ok, scored), n: list.length};
+  const list = BY_SEC[i];
+  const answered = list.filter(question => done(DB,question.id));
+  const ok = answered.filter(question => DB.rec[question.id].c > 0).length;
+  return {done:answered.length, ok, acc:pct(ok,answered.length), n:list.length};
 }
 function overall(){
-  let done=0, ok=0, scored=0;
-  for(const q of QS){ const r = DB.rec[q.id]; if((r && r.a>0) || DB.marked[q.id]) done++; if(r?.a>0){scored++;if((r.c||0)>0)ok++;} }
-  return {done, ok, n: QS.length, acc: pct(ok, scored)};
+  const answered = QS.filter(question => done(DB,question.id));
+  const ok = answered.filter(question => DB.rec[question.id].c > 0).length;
+  return {done:answered.length, ok, n:QS.length, acc:pct(ok,answered.length)};
 }
 function todayCount(){ const h = DB.hist[todayStr()]; return h ? h.n : 0; }
 function streak(){
@@ -117,7 +120,7 @@ const NAV = [
   {k:'fav', label:'收藏', icon:'star', badge:()=>DB.fav.length},
   {k:'stats', label:'数据统计', icon:'chart'},
   {k:'search', label:'搜题', icon:'search'},
-  {k:'notes', label:'我的笔记', icon:'chart'}
+  {k:'comments', label:'评论', icon:'chart'}
 ];
 function navHTML(mobile){
   return NAV.map(n=>{
@@ -172,7 +175,7 @@ function go(v){
   else if(v==='stats'){ renderStats(); }
   else if(v==='search'){ renderSearch(); }
   else if(v==='chapter'){ renderChapter(); }
-  else if(v==='notes'){ renderNotes(); }
+  else if(v==='comments'){ renderCommentLibrary(); }
   else if(v==='result'){ renderResult(); }
   paintNav();
   window.scrollTo({top:0});
@@ -267,7 +270,7 @@ function startSession(o){
   SESS = {
     title:o.title, ids, i:Math.min(o.i||0, ids.length-1), mode:o.mode, key:o.key||null,
     immediate:o.immediate!==false, minutes:o.minutes||0,
-    pick:structuredClone(o.pick||{}), ans:{}, t0:o.t0||Date.now(), submitted:false, reviewing:false
+    pick:structuredClone(o.pick||{}), ans:{}, clearedAt:{...DB.clearedAt}, t0:o.t0||Date.now(), submitted:false, reviewing:false
   };
   savePosition();
   SHOW_SHEET = false;
@@ -325,15 +328,14 @@ function renderPractice(){
     ${answered ? verdictHTML(q, graded) : ''}
     <div class="study-tools">
       <button class="btn" data-study="retry">重做本题</button>
-      <button class="btn" data-study="marked">${DB.marked[q.id]?'取消已刷标记':'标记已刷'}</button>
+      <button class="btn" data-study="clear-one">清除本题作答记录</button>
       <button class="btn" data-study="mastered">${DB.mastered[q.id]?'取消掌握标记':'标记已掌握'}</button>
       <button class="btn" data-study="wrong">${DB.wrong.includes(q.id)?'移出错题本':'加入错题本'}</button>
     </div>
-    <section class="study-note">
-      <label for="question-note">我的笔记</label>
-      <p class="tiny">自动保存并同步，管理员可以查看。</p>
-      <textarea id="question-note" data-question="${q.id}" maxlength="10000" rows="4" placeholder="记录考点、易混点或记忆口诀">${esc(DB.notes[q.id]||'')}</textarea>
-    </section>
+    <details class="study-note comment-panel">
+      <summary>题目评论</summary>
+      <div id="question-comments"></div>
+    </details>
     <section class="study-ai">
       <button class="btn" data-study="explain" ${aiAnswers.get(q.id)?.loading?'disabled':''}>${aiAnswers.get(q.id)?.loading?'AI 正在解析…':'AI 一键解析'}</button>
       <p class="tiny">AI 解析用于学习参考，请对照教材核实。</p>
@@ -343,11 +345,12 @@ function renderPractice(){
       <button class="btn ghost favbtn ${isFav?'on':''}" data-act="fav">${ICON.star}${isFav?'已收藏':'收藏'}</button>
       <div class="sp"></div>
       <button class="btn" data-act="prev" ${SESS.i===0?'disabled':''}>${ICON.left}上一题</button>
-      ${(!answered && q.m) ? `<button class="btn primary" data-act="submit" ${picked.length?'':'disabled'}>提交答案${picked.length?` (${picked.length})`:''}</button>`
+      ${(SESS.immediate && !answered && q.m) ? `<button class="btn primary" data-act="submit" ${picked.length?'':'disabled'}>提交答案${picked.length?` (${picked.length})`:''}</button>`
         : `<button class="btn primary" data-act="next">${SESS.i===total-1?(SESS.immediate?'完成':'交卷'):'下一题'}${ICON.right}</button>`}
     </div>
   </article>`;
 
+  mountComments?.($('#question-comments'),q.id,DB.notes[q.id] || '');
   if(SESS.minutes) tickTimer();
 }
 
@@ -413,7 +416,7 @@ document.addEventListener('click', e=>{
 });
 
 function submitMulti(){
-  const q = cur(); if(!q) return;
+  const q = cur(); if(!q || !SESS.immediate || SESS.mode==='read') return;
   if(!(SESS.pick[q.id]||[]).length) return;
   grade();
 }
@@ -436,11 +439,15 @@ function grade(){
 }
 
 function record(q, ok, selection){
-  const time = Date.now();
+  const time = Math.max(Date.now(), (DB.clearedAt[q.id] || 0) + 1);
   const day = todayStr();
   attempts.push({question:q.id, day, time, selection});
   const r = DB.rec[q.id] || {a:0,c:0,w:0};
   r.a++; if(ok) r.c++; r.w = ok?0:1; r.t = time; r.sel = selection;
+  r.days ||= {};
+  const daily = r.days[day] ||= {n:0,ok:0};
+  daily.n++;
+  if(ok) daily.ok++;
   DB.rec[q.id] = r;
   const d = todayStr();
   const h = DB.hist[d] || {n:0, ok:0};
@@ -493,37 +500,31 @@ function toggleSheet(on){
   SHOW_SHEET = on;
   const sh = $('#sheet');
   if(!on){ sh.classList.remove('on'); return; }
+  if (!SESS) { sh.classList.remove('on'); return; }
   const total = SESS.ids.length;
+  const labels = {right:'本轮答对',bad:'本轮答错',pick:SESS.immediate?'本轮已选':'本轮已答',
+    previousRight:'曾答对',previousWrong:'曾答错',blank:'未答'};
+  const counts = {};
   const cells = SESS.ids.map((id,i)=>{
+    const status = answerCardStatus(SESS, DB, id);
     const q = QMAP.get(id);
-    const g = SESS.ans[id];
-    const p = SESS.pick[id];
-    let c = 'cell';
-    if(g) c += g.ok?' right':' bad';
-    else if(p && p.length) c += ' pick';
-    if(i===SESS.i) c += ' cur';
-    return `<button class="${c}" data-jump="${i}">${q.num}</button>`;
+    counts[status] = (counts[status] || 0) + 1;
+    return `<button class="cell ${status}${i===SESS.i?' cur':''}" data-jump="${i}"
+      aria-label="第 ${q.num} 题 · ${labels[status]}" title="${labels[status]}">${q.num}</button>`;
   }).join('');
-  const answered = Object.keys(SESS.ans).length;
-  const pickedN = Object.keys(SESS.pick).filter(k=>SESS.pick[k].length).length;
   $('#sheetPanel').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div><h3>答题卡</h3><div class="sub">${esc(SESS.title)} · 共 ${total} 题</div></div>
-      <button class="round" data-act="closesheet">${ICON.close}</button>
+      <button class="round" data-act="closesheet" aria-label="关闭答题卡">${ICON.close}</button>
     </div>
-    <div class="legend">
-      ${SESS.immediate ? `
-        <span><i style="background:var(--ok-soft)"></i>答对 ${answered-Object.values(SESS.ans).filter(a=>!a.ok).length}</span>
-        <span><i style="background:var(--bad-soft)"></i>答错 ${Object.values(SESS.ans).filter(a=>!a.ok).length}</span>
-        <span><i style="background:var(--line2);border:1px solid var(--line)"></i>未答 ${total-answered}</span>`
-      : `<span><i style="background:var(--accent-soft)"></i>已答 ${pickedN}</span>
-         <span><i style="background:var(--line2);border:1px solid var(--line)"></i>未答 ${total-pickedN}</span>`}
-    </div>
+    <div class="legend">${Object.entries(labels).filter(([status])=>counts[status]).map(([status,label])=>
+      `<span><i class="cell ${status}"></i>${label} ${counts[status]}</span>`).join('')}</div>
     <div class="grid">${cells}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:22px">
       <button class="btn ghost" data-act="autonext" style="justify-content:flex-start">
         ${DB.autonext?'✓':'○'}&nbsp;答对后自动下一题</button>
       ${!SESS.immediate?`<button class="btn primary" data-act="handin">交卷</button>`:''}
+      <button class="btn ghost" data-study="clear-chapter">清除本章作答记录 · ${esc(SEC[cur().sec].name)}</button>
       <button class="btn ghost" data-act="exit" style="justify-content:flex-start">退出本次练习</button>
       <div class="tiny" style="padding:8px 2px 0;line-height:1.9">
         <span class="kbd">A</span>–<span class="kbd">E</span> 选择 ·
@@ -820,7 +821,7 @@ document.addEventListener('keydown', e=>{
   }
   if(e.key==='Enter'){
     e.preventDefault();
-    if(!SESS.ans[q.id] && q.m) submitMulti(); else nextQ();
+    if(SESS.immediate && SESS.mode!=='read' && !SESS.ans[q.id] && q.m) submitMulti(); else nextQ();
     return;
   }
   if(e.key==='ArrowRight'){ e.preventDefault(); nextQ(); }
@@ -837,13 +838,25 @@ function updateProgress(data, reset) {
   if (VIEW === 'wrong' || VIEW === 'fav') renderList(VIEW);
   if (VIEW === 'stats') renderStats();
   if (VIEW === 'chapter') renderChapter();
-  if (VIEW === 'notes') renderNotes();
+  if (VIEW === 'practice' && SESS) {
+    let refreshQuestion = false;
+    for (const id of SESS.ids) {
+      if ((DB.clearedAt[id] || 0) > (SESS.clearedAt[id] || 0)) {
+        if (id === cur()?.id && (SESS.ans[id] || SESS.pick[id]?.length)) refreshQuestion = true;
+        clearSessionQuestions([id]);
+        SESS.clearedAt[id] = DB.clearedAt[id];
+      }
+    }
+    if (refreshQuestion) renderPractice();
+    if (SHOW_SHEET) toggleSheet(true);
+  }
   paintNav();
 }
 
 function returnToLogin(message = '') {
   sync?.stop();
   sync = null;
+  mountComments = null;
   aiAnswers.clear();
   QS = []; SEC = []; BY_SEC = []; QMAP.clear();
   DB = emptyProgress(); previous = structuredClone(DB); attempts = [];
@@ -889,7 +902,18 @@ $('#student-form').addEventListener('submit', async event => {
       update: updateProgress,
       denied: returnToLogin
     });
-    $('#account-label').textContent = result.label;
+    const connection = sync;
+    mountComments = createComments({
+      request: (action,details) => connection.comments(action,details),
+      loginId: credential,
+      escape: esc,
+      questionLabel(id) {
+        const q = QMAP.get(id);
+        return q ? SEC[q.sec].name+' · 第 '+q.num+' 题' : '查看原题';
+      },
+      openQuestion(id) { startSession({title:'评论原题',ids:[id],mode:'single'}); }
+    });
+    $('#account-label').textContent = '登录 ID ' + credential;
     $('#sync-status').textContent = '已同步';
     $('#sync-status').dataset.state = 'ok';
     input.value = '';
@@ -934,7 +958,7 @@ document.addEventListener('visibilitychange', () => {
 
 const FILTERS = [
   ['all','全部'], ['unseen','未刷'], ['done','已刷'], ['wrong','待复习错题'],
-  ['everwrong','历史错题'], ['fav','收藏'], ['notes','有笔记'], ['mastered','已掌握']
+  ['everwrong','历史错题'], ['fav','收藏'], ['mastered','已掌握']
 ];
 function questionStatus(q) {
   const r = DB.rec[q.id];
@@ -942,8 +966,7 @@ function questionStatus(q) {
     done(DB,q.id) ? '已刷' : '未刷',
     r ? '作答 '+r.a+' 次 · 正确 '+r.c+' 次' : '',
     DB.wrong.includes(q.id) ? '待复习错题' : '',
-    DB.mastered[q.id] ? '已掌握' : '',
-    DB.notes[q.id]?.trim() ? '有笔记' : ''
+    DB.mastered[q.id] ? '已掌握' : ''
   ].filter(Boolean).join(' · ');
 }
 function renderChapter(){
@@ -958,15 +981,18 @@ function renderChapter(){
     </div>
     <div class="list">${questions.length ? questions.map(q=>`<div class="study-row">
       <button class="item" data-study-question="${q.id}"><div class="txt"><div>第 ${q.num} 题 · ${esc(q.stem)}</div><div class="meta">${esc(questionStatus(q))}</div></div></button>
-      <button class="btn" data-mark-question="${q.id}">${DB.marked[q.id]?'取消已刷':'标记已刷'}</button>
     </div>`).join('') : '<p class="empty">当前筛选下没有题目。</p>'}</div>`;
   $('#chapter-mode').value = chapterMode;
   $('#chapter-mode').onchange = e=>{chapterMode=e.target.value;};
 }
-function renderNotes() {
-  const questions=QS.filter(q=>DB.notes[q.id]?.trim());
-  $('#main').innerHTML=`<div class="page-head"><h1>我的笔记</h1><p>${questions.length} 道题有笔记</p></div>
-    <div class="list">${questions.length ? questions.map(q=>`<button class="item" data-note-question="${q.id}"><div class="txt"><div>${esc(SEC[q.sec].name)} · 第 ${q.num} 题</div><div>${esc(q.stem)}</div><p class="note-preview">${esc(DB.notes[q.id])}</p></div></button>`).join('') : '<p class="empty">做题时可以记录笔记，系统会自动保存。</p>'}</div>`;
+function renderCommentLibrary() {
+  const legacy = QS.filter(q=>DB.notes[q.id]?.trim());
+  $('#main').innerHTML = `<div class="page-head"><h1>评论</h1></div>
+    <section id="comment-library"></section>
+    ${legacy.length ? `<details class="study-note"><summary>旧笔记草稿（${legacy.length}）</summary>
+      <p class="tiny">打开原题的评论区，可以将旧笔记发布为评论。</p>
+      ${legacy.map(q=>`<button class="item" data-note-question="${q.id}">${esc(SEC[q.sec].name)} · 第 ${q.num} 题 · ${esc(q.stem)}</button>`).join('')}</details>` : ''}`;
+  mountComments?.($('#comment-library'));
 }
 function startFilteredQuestion(id) {
   const questions = BY_SEC[chapter].filter(q=>matches(DB,q,chapterFilter));
@@ -974,22 +1000,39 @@ function startFilteredQuestion(id) {
   startSession({title:SEC[chapter].name,ids,i:Math.max(0,ids.indexOf(id)),mode:chapterMode==='read'?'read':chapterFilter==='wrong'?'wrong':'seq',
     immediate:chapterMode!=='test',minutes:chapterMode==='test'?Math.max(10,ids.length):0,key:null});
 }
-document.addEventListener('input', event=>{
-  if(event.target.id!=='question-note' || !sync) return;
-  const id=event.target.dataset.question;
-  DB.notes[id]=event.target.value;
-  saveDB();
-});
+function clearSessionQuestions(ids) {
+  for (const id of ids) {
+    delete SESS.ans[id];
+    delete SESS.pick[id];
+  }
+}
+
+function clearAnswerRecords(ids, label) {
+  if (!confirm('清除'+label+'的作答记录？清除后这些题可以重新作答。')) return;
+  const at = Date.now();
+  clearQuestionRecords(DB, {ids,at});
+  clearSessionQuestions(ids);
+  for (const id of ids) SESS.clearedAt[id] = DB.clearedAt[id];
+  saveDB({clearQuestions:{ids,at}});
+  if (SESS.reviewing) {
+    const {title,i} = SESS;
+    startSession({title,ids:SESS.ids,i,mode:'seq'});
+    return;
+  }
+  savePosition();
+  renderPractice();
+  if (SHOW_SHEET) toggleSheet(true);
+  paintNav();
+}
+
 document.addEventListener('click', async event=>{
   if(!sync) return;
   const filter=event.target.closest('[data-filter]');
   if(filter){chapterFilter=filter.dataset.filter;renderChapter();return;}
-  const marked=event.target.closest('[data-mark-question]');
-  if(marked){const id=marked.dataset.markQuestion;DB.marked[id]=!DB.marked[id];saveDB();renderChapter();return;}
   const chapterQuestion=event.target.closest('[data-study-question]');
   if(chapterQuestion){startFilteredQuestion(chapterQuestion.dataset.studyQuestion);return;}
   const noteQuestion=event.target.closest('[data-note-question]');
-  if(noteQuestion){startSession({title:'笔记复习',ids:[noteQuestion.dataset.noteQuestion],mode:'single'});return;}
+  if(noteQuestion){startSession({title:'旧笔记草稿',ids:[noteQuestion.dataset.noteQuestion],mode:'single'});return;}
   const action=event.target.closest('[data-study]')?.dataset.study;
   if(!action)return;
   if(action==='chapter-start'){const first=BY_SEC[chapter].find(q=>matches(DB,q,chapterFilter));if(first)startFilteredQuestion(first.id);return;}
@@ -1001,8 +1044,23 @@ document.addEventListener('click', async event=>{
   }
   if(!SESS)return;
   const q=cur();
-  if(action==='retry'){delete SESS.ans[q.id];delete SESS.pick[q.id];SESS.reviewing=false;if(SESS.mode==='read')SESS.mode='single';renderPractice();return;}
-  if(action==='marked' || action==='mastered'){DB[action][q.id]=!DB[action][q.id];saveDB();renderPractice();return;}
+  if(action==='retry'){
+    if (SESS.reviewing || SESS.mode==='read') {
+      startSession({title:'重做本题',ids:[q.id],mode:'single'});
+    } else {
+      clearSessionQuestions([q.id]);
+      savePosition();
+      renderPractice();
+    }
+    return;
+  }
+  if(action==='clear-one' || action==='clear-chapter') {
+    const section = SEC[q.sec];
+    clearAnswerRecords(action==='clear-one' ? [q.id] : BY_SEC[q.sec].map(question=>question.id),
+      action==='clear-one' ? '本题' : '「'+section.name+'」整章');
+    return;
+  }
+  if(action==='mastered'){DB[action][q.id]=!DB[action][q.id];saveDB();renderPractice();return;}
   if(action==='wrong'){const index=DB.wrong.indexOf(q.id);if(index<0)DB.wrong.push(q.id);else DB.wrong.splice(index,1);saveDB();renderPractice();return;}
   if(action==='explain'){
     const session=SESS;
