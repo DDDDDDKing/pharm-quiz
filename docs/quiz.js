@@ -872,9 +872,27 @@ $('#student-form').addEventListener('submit', async event => {
   }
 });
 
-$('#sign-out').addEventListener('click', () => returnToLogin());
+$('#sign-out').addEventListener('click', async event => {
+  const current = sync;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    if (current) {
+      let timer;
+      try {
+        await Promise.race([current.flush(), new Promise(resolve => { timer = setTimeout(resolve, 1500); })]);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    if (sync === current) returnToLogin();
+  } finally {
+    button.disabled = false;
+  }
+});
 $('#sync-status').addEventListener('click', () => { void sync?.flush(); });
 window.addEventListener('online', () => { void sync?.flush(); });
+window.addEventListener('pagehide', () => { void sync?.flush(); });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) void sync?.flush();
 });

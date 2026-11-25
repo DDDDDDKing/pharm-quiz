@@ -8,11 +8,13 @@ export function normalizeId(value) {
 export async function request(role, credential, action, details = {}) {
   let response;
   let data;
+  const body = JSON.stringify({role, credential, action, ...details});
   try {
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {'Content-Type':'application/json', apikey:publishableKey},
-      body: JSON.stringify({role, credential, action, ...details}),
+      body,
+      keepalive: role === 'student' && action === 'sync' && new Blob([body]).size < 60_000,
       cache: 'no-store',
       credentials: 'omit',
       signal: AbortSignal.timeout(20_000)
