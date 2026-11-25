@@ -4,7 +4,7 @@ grant usage on schema pharm to service_role;
 
 create function pharm.empty_progress() returns jsonb
 language sql immutable set search_path = '' as $$
-  select '{"rec":{},"fav":[],"wrong":[],"pos":{},"hist":{},"autonext":false,"theme":"light","exam":null}'::jsonb
+  select '{"rec":{},"fav":[],"wrong":[],"pos":{},"hist":{},"autonext":false,"theme":"light","exam":null,"notes":{},"marked":{},"mastered":{}}'::jsonb
 $$;
 
 create table pharm.accounts (
@@ -131,7 +131,10 @@ begin
       state := jsonb_set(state, '{fav}', pharm.membership(state->'fav',patch->'fav'));
       state := jsonb_set(state, '{wrong}', pharm.membership(state->'wrong',patch->'wrong'));
       state := jsonb_set(state, '{pos}', (state->'pos') || coalesce(patch->'pos','{}'::jsonb));
-      state := state || (patch - 'fav' - 'wrong' - 'pos');
+      state := jsonb_set(state, '{notes}', coalesce(state->'notes','{}'::jsonb) || coalesce(patch->'notes','{}'::jsonb));
+      state := jsonb_set(state, '{marked}', coalesce(state->'marked','{}'::jsonb) || coalesce(patch->'marked','{}'::jsonb));
+      state := jsonb_set(state, '{mastered}', coalesce(state->'mastered','{}'::jsonb) || coalesce(patch->'mastered','{}'::jsonb));
+      state := state || (patch - 'fav' - 'wrong' - 'pos' - 'notes' - 'marked' - 'mastered');
     end loop;
   end if;
 
@@ -156,6 +159,51 @@ begin
 end;
 $$;
 
+create table pharm.ai_settings (
+  id boolean primary key default true check(id),
+  provider text not null default 'doubao',
+  model text not null default '',
+  api_key text not null default '',
+  enabled boolean not null default false,
+  daily_limit integer not null default 20 check(daily_limit between 1 and 100)
+);
+insert into pharm.ai_settings(id) values(true);
+create table pharm.ai_usage (
+  account_id uuid not null references pharm.accounts(id) on delete cascade,
+  day date not null,
+  count integer not null default 0,
+  primary key(account_id,day)
+);
+alter table pharm.ai_settings enable row level security;
+alter table pharm.ai_usage enable row level security;
+grant select,update on pharm.ai_settings to service_role;
+grant select,insert,update on pharm.ai_usage to service_role;
+
+create or replace function public.pharm_quiz_ai(p_hash text, p_question text) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare
+  learner pharm.accounts%rowtype;
+  config pharm.ai_settings%rowtype;
+  question jsonb;
+  used integer;
+begin
+  select * into learner from pharm.accounts where credential_hash=decode(p_hash,'hex') and role='student' and active for update;
+  if not found then return '{"error":"access_denied"}'::jsonb; end if;
+  select * into config from pharm.ai_settings where id;
+  if not config.enabled or config.api_key='' or config.model='' then return '{"error":"ai_not_configured"}'::jsonb; end if;
+  select data into question from pharm.questions where id=p_question;
+  if question is null then return '{"error":"not_found"}'::jsonb; end if;
+  insert into pharm.ai_usage as usage(account_id,day,count)
+    values(learner.id,(now() at time zone 'Asia/Shanghai')::date,1)
+    on conflict(account_id,day) do update set count=usage.count+1
+    where usage.count<config.daily_limit returning count into used;
+  if used is null then return '{"error":"ai_limit"}'::jsonb; end if;
+  return jsonb_build_object('provider',config.provider,'model',config.model,'key',config.api_key,'question',question);
+end;
+$$;
+revoke all on function public.pharm_quiz_ai(text,text) from public,anon,authenticated;
+grant execute on function public.pharm_quiz_ai(text,text) to service_role;
+
 create function public.pharm_quiz_admin(p_hash text, p_action text, p_body jsonb) returns jsonb
 language plpgsql security invoker set search_path = '' as $$
 declare
@@ -166,6 +214,26 @@ begin
   if not exists (select from pharm.accounts
       where credential_hash = decode(p_hash, 'hex') and role = 'admin' and active) then
     return '{"error":"access_denied"}'::jsonb;
+  end if;
+  if p_action = 'detail' then
+    select jsonb_build_object('label',a.label,'state',a.state,
+      'questions',(select coalesce(jsonb_agg(q.data order by q.id),'[]'::jsonb)
+        from pharm.questions q where a.state->'rec' ? q.id or a.state->'notes' ? q.id
+          or a.state->'marked' ? q.id or a.state->'mastered' ? q.id),
+      'sections',(select data from pharm.sections where id))
+      into rows from pharm.accounts a where a.id=(p_body->>'account')::uuid and a.role='student';
+    return coalesce(rows,'{"error":"not_found"}'::jsonb);
+  end if;
+  if p_action = 'ai_save' then
+    update pharm.ai_settings set provider=p_body->>'provider', model=p_body->>'model',
+      api_key=case when coalesce(p_body->>'apiKey','')='' then api_key else p_body->>'apiKey' end,
+      enabled=(p_body->>'enabled')::boolean, daily_limit=(p_body->>'dailyLimit')::integer
+      where id;
+  end if;
+  if p_action in ('ai_save','ai_settings') then
+    select jsonb_build_object('provider',provider,'model',model,'enabled',enabled,
+      'hasKey',api_key<>'','dailyLimit',daily_limit) into rows from pharm.ai_settings where id;
+    return rows;
   end if;
   if p_action = 'add' then
     issued := p_body->>'student_id';

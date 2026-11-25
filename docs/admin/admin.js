@@ -1,4 +1,4 @@
-import {isValidId, request} from '../api.js?v=3';
+import {isValidId, request} from '../api.js?v=4';
 
 const $ = selector => document.querySelector(selector);
 const seenFormat = new Intl.DateTimeFormat('zh-CN', {
@@ -7,6 +7,7 @@ const seenFormat = new Intl.DateTimeFormat('zh-CN', {
 let credential;
 let busy = false;
 let session = 0;
+let detail;
 
 function feedback(text, error = false) {
   $('#feedback').textContent = text;
@@ -40,7 +41,15 @@ function render(students) {
       render(result.students);
       feedback(student.active ? '该 ID 已停用。' : '该 ID 已恢复。');
     }));
-    row.insertCell().append(button);
+    const inspect=document.createElement('button');
+    inspect.type='button';inspect.textContent='查看作答与笔记';
+    inspect.addEventListener('click',()=>run(inspect,async(id,current)=>{
+      const data=await request('admin',id,'detail',{account:student.id});
+      if(current!==session)return;
+      detail=data;$('#student-detail').hidden=false;$('#detail-title').textContent=data.label+' · 作答与笔记';
+      renderDetail();$('#student-detail').scrollIntoView({behavior:'smooth',block:'start'});
+    }));
+    row.insertCell().append(inspect,document.createTextNode(' '),button);
     return row;
   });
   $('#roster').replaceChildren(...rows);
@@ -58,6 +67,8 @@ function signOut(message = '') {
   $('#issued-id').value = '';
   $('#issued').hidden = true;
   feedback('');
+  detail=null;$('#student-detail').hidden=true;$('#detail-content').replaceChildren();
+  $('#ai-key').value='';$('#ai-state').textContent='';
   render([]);
   $('#admin-id').focus();
 }
@@ -100,6 +111,10 @@ $('#admin-form').addEventListener('submit', async event => {
     render(result.students);
     $('#login').hidden = true;
     $('#dashboard').hidden = false;
+    try {
+      const settings=await request('admin',key,'ai_settings');
+      if(credential===key){showAiSettings(settings);}
+    }catch(error){if(credential===key)$('#ai-state').textContent=error.message;}
   } catch (error) {
     $('#login-error').textContent = error.message;
   } finally {
@@ -150,3 +165,41 @@ $('#copy-id').addEventListener('click', async () => {
   }
 });
 $('#sign-out').addEventListener('click', () => signOut());
+
+function renderDetail(){
+  if(!detail)return;
+  const state=detail.state;
+  const filter=$('#detail-filter').value;
+  const questions=detail.questions.filter(q=>filter==='all' || (filter==='wrong'?state.wrong.includes(q.id):state.notes?.[q.id]?.trim()));
+  $('#detail-content').replaceChildren(...questions.map(q=>{
+    const block=document.createElement('article');block.className='detail-question';
+    const heading=document.createElement('h3');heading.textContent=detail.sections[q.sec].name+' · 第 '+q.num+' 题';
+    const stem=document.createElement('p');stem.textContent=q.stem;
+    const rec=state.rec[q.id];
+    const stats=document.createElement('p');
+    stats.textContent=rec?'作答 '+rec.a+' 次，答对 '+rec.c+' 次，最近选择 '+(rec.sel||[]).join('')+'，最近作答 '+new Date(rec.t).toLocaleString('zh-CN'):(state.marked?.[q.id]?'手动标记已刷':'尚未作答');
+    const note=document.createElement('p');note.textContent='笔记\n'+(state.notes?.[q.id]||'暂无笔记');
+    block.append(heading,stem,stats,note);return block;
+  }));
+  if(!questions.length)$('#detail-content').textContent='这个范围内暂无记录。';
+}
+$('#detail-filter').onchange=renderDetail;
+$('#close-detail').onclick=()=>{$('#student-detail').hidden=true;detail=null;};
+function showAiSettings(settings){
+  $('#ai-provider').value=settings.provider;$('#ai-model').value=settings.model;
+  $('#ai-enabled').checked=settings.enabled;$('#ai-limit').value=settings.dailyLimit;
+  $('#ai-key').value='';
+  $('#ai-state').textContent=settings.hasKey?'已保存 API Key。':'尚未配置 API Key。';
+}
+$('#ai-form').onsubmit=event=>{
+  event.preventDefault();
+  const apiKey=$('#ai-key').value.trim();
+  void run(event.currentTarget.querySelector('button'),async(id,current)=>{
+    const settings=await request('admin',id,'ai_save',{
+      provider:$('#ai-provider').value,model:$('#ai-model').value.trim(),apiKey,
+      enabled:$('#ai-enabled').checked,dailyLimit:Number($('#ai-limit').value)
+    });
+    if(current!==session)return;
+    showAiSettings(settings);feedback('AI 设置已保存。');
+  });
+};

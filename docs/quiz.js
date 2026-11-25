@@ -1,6 +1,10 @@
-import {isValidId, request} from './api.js?v=3';
-import {connectProgress, emptyProgress} from './student-sync.js?v=3';
+import {isValidId, request} from './api.js?v=4';
+import {connectProgress, emptyProgress} from './student-sync.js?v=4';
 
+import {done, matches, reviewQuestions} from './study.js?v=4';
+
+let chapter = 0, chapterFilter = 'all', chapterMode = 'practice';
+let aiAnswers = new Map();
 let QS = [], SEC = [], QMAP = new Map(), BY_SEC = [];
 let DB = emptyProgress();
 let previous = structuredClone(DB);
@@ -25,6 +29,13 @@ function saveDB() {
   }
   for (const key of ['autonext','theme','exam']) {
     if (JSON.stringify(previous[key]) !== JSON.stringify(DB[key])) patch[key] = structuredClone(DB[key]);
+  }
+  for (const key of ['notes','marked','mastered']) {
+    const changes = {};
+    for (const [id,value] of Object.entries(DB[key])) {
+      if (previous[key]?.[id] !== value) changes[id] = value;
+    }
+    if (Object.keys(changes).length) patch[key] = changes;
   }
   const positions = {};
   for (const [key, value] of Object.entries(DB.pos)) {
@@ -72,15 +83,15 @@ const ICON = {
 
 /* ---------------- computed ---------------- */
 function sectionStat(i){
-  const list = BY_SEC[i]; let done=0, ok=0, tries=0;
+  const list = BY_SEC[i]; let done=0, ok=0, tries=0, scored=0;
   for(const q of list){ const r = DB.rec[q.id]; if(r){ tries += r.a||0; } }
-  for(const q of list){ const r = DB.rec[q.id]; if(r && r.a>0){ done++; if((r.c||0)>0) ok++; } }
-  return {done, ok, acc: pct(ok, done), n: list.length};
+  for(const q of list){ const r = DB.rec[q.id]; if((r && r.a>0) || DB.marked[q.id]) done++; if(r?.a>0){scored++;if((r.c||0)>0)ok++;} }
+  return {done, ok, acc: pct(ok, scored), n: list.length};
 }
 function overall(){
-  let done=0, ok=0;
-  for(const q of QS){ const r = DB.rec[q.id]; if(r && r.a>0){ done++; if((r.c||0)>0) ok++; } }
-  return {done, ok, n: QS.length, acc: pct(ok, done)};
+  let done=0, ok=0, scored=0;
+  for(const q of QS){ const r = DB.rec[q.id]; if((r && r.a>0) || DB.marked[q.id]) done++; if(r?.a>0){scored++;if((r.c||0)>0)ok++;} }
+  return {done, ok, n: QS.length, acc: pct(ok, scored)};
 }
 function todayCount(){ const h = DB.hist[todayStr()]; return h ? h.n : 0; }
 function streak(){
@@ -105,7 +116,8 @@ const NAV = [
   {k:'wrong', label:'错题本', icon:'wrong', badge:()=>DB.wrong.length},
   {k:'fav', label:'收藏', icon:'star', badge:()=>DB.fav.length},
   {k:'stats', label:'数据统计', icon:'chart'},
-  {k:'search', label:'搜题', icon:'search'}
+  {k:'search', label:'搜题', icon:'search'},
+  {k:'notes', label:'我的笔记', icon:'chart'}
 ];
 function navHTML(mobile){
   return NAV.map(n=>{
@@ -159,6 +171,8 @@ function go(v){
   else if(v==='fav'){ renderList('fav'); }
   else if(v==='stats'){ renderStats(); }
   else if(v==='search'){ renderSearch(); }
+  else if(v==='chapter'){ renderChapter(); }
+  else if(v==='notes'){ renderNotes(); }
   else if(v==='result'){ renderResult(); }
   paintNav();
   window.scrollTo({top:0});
@@ -192,6 +206,8 @@ function renderHome(){
   <div class="quick">
     ${contBtn}
     <button class="qbtn" data-act="random"><b>随机 20 题</b><span>混合抽题，查漏补缺</span></button>
+    <button class="qbtn" data-study="smart"><b>智能复习</b><span>优先错题、薄弱题与久未复习题</span></button>
+    <button class="qbtn" data-study="paper"><b>智能组卷</b><span>按你的作答记录组成 50 题测试</span></button>
     <button class="qbtn" data-act="wrong"><b>错题重练</b><span>${DB.wrong.length} 题待复习</span></button>
     <button class="qbtn" data-act="exam"><b>${DB.exam ? '继续模拟考' : '模拟考'}</b><span>50 题 · 60 分钟 · 交卷评分</span></button>
   </div>
@@ -236,7 +252,7 @@ document.addEventListener('click', e=>{
   else if(act==='autonext'){ DB.autonext = !DB.autonext; saveDB(); renderPractice(); }
 });
 document.addEventListener('click', e=>{
-  const c = e.target.closest('[data-sec]'); if(c){ startSection(+c.dataset.sec); }
+  const c = e.target.closest('[data-sec]'); if(c){ chapter=+c.dataset.sec; chapterFilter='all'; go('chapter'); }
 });
 
 /* ---------------- session ---------------- */
@@ -278,7 +294,7 @@ function renderPractice(){
   if(!q){ handIn(); return; }
   const total = SESS.ids.length;
   const picked = SESS.pick[q.id] || [];
-  const graded = SESS.ans[q.id];
+  const graded = SESS.ans[q.id] || (SESS.mode==='read' ? {sel:q.a,ok:true} : null);
   const answered = !!graded;
   const isFav = DB.fav.includes(q.id);
   const secName = SEC[q.sec].name;
@@ -307,6 +323,22 @@ function renderPractice(){
       ${q.opts.map(o=>optHTML(q,o,picked,graded)).join('')}
     </div>
     ${answered ? verdictHTML(q, graded) : ''}
+    <div class="study-tools">
+      <button class="btn" data-study="retry">重做本题</button>
+      <button class="btn" data-study="marked">${DB.marked[q.id]?'取消已刷标记':'标记已刷'}</button>
+      <button class="btn" data-study="mastered">${DB.mastered[q.id]?'取消掌握标记':'标记已掌握'}</button>
+      <button class="btn" data-study="wrong">${DB.wrong.includes(q.id)?'移出错题本':'加入错题本'}</button>
+    </div>
+    <section class="study-note">
+      <label for="question-note">我的笔记</label>
+      <p class="tiny">自动保存并同步，管理员可以查看。</p>
+      <textarea id="question-note" data-question="${q.id}" maxlength="10000" rows="4" placeholder="记录考点、易混点或记忆口诀">${esc(DB.notes[q.id]||'')}</textarea>
+    </section>
+    <section class="study-ai">
+      <button class="btn" data-study="explain" ${aiAnswers.get(q.id)?.loading?'disabled':''}>${aiAnswers.get(q.id)?.loading?'AI 正在解析…':'AI 一键解析'}</button>
+      <p class="tiny">AI 解析用于学习参考，请对照教材核实。</p>
+      <div class="ai-answer" id="ai-answer" aria-live="polite">${esc(aiAnswers.get(q.id)?.text||'')}</div>
+    </section>
     <div class="pfoot fix">
       <button class="btn ghost favbtn ${isFav?'on':''}" data-act="fav">${ICON.star}${isFav?'已收藏':'收藏'}</button>
       <div class="sp"></div>
@@ -356,7 +388,7 @@ function verdictHTML(q, g){
 document.addEventListener('click', e=>{
   const o = e.target.closest('#opts .opt'); if(!o || !SESS || VIEW!=='practice') return;
   const q = cur(); if(!q) return;
-  if(SESS.ans[q.id] || SESS.reviewing) return;
+  if(SESS.ans[q.id] || SESS.reviewing || SESS.mode==='read') return;
   const k = o.dataset.k;
   const pick = SESS.pick[q.id] || [];
   if(q.m){
@@ -395,12 +427,12 @@ function grade(){
     record(q, ok, sel);
     // wrong book maintenance
     if(!ok){ if(!DB.wrong.includes(q.id)) DB.wrong.push(q.id); }
-    else if(SESS.mode==='wrong'){ const wi = DB.wrong.indexOf(q.id); if(wi>=0) DB.wrong.splice(wi,1); }
+    else if(['wrong','smart'].includes(SESS.mode)){ const wi = DB.wrong.indexOf(q.id); if(wi>=0) DB.wrong.splice(wi,1); }
     savePosition();
   }
   renderPractice(); paintNav();
   const currentSession = SESS;
-  if(DB.autonext && ok){ setTimeout(()=>{ if(VIEW==='practice' && SESS===currentSession && cur()?.id===q.id) nextQ(); }, 620); }
+  if(DB.autonext && ok && SESS.mode!=='read'){ setTimeout(()=>{ if(VIEW==='practice' && SESS===currentSession && cur()?.id===q.id) nextQ(); }, 620); }
 }
 
 function record(q, ok, selection){
@@ -804,12 +836,15 @@ function updateProgress(data, reset) {
   if (VIEW === 'home') renderHome();
   if (VIEW === 'wrong' || VIEW === 'fav') renderList(VIEW);
   if (VIEW === 'stats') renderStats();
+  if (VIEW === 'chapter') renderChapter();
+  if (VIEW === 'notes') renderNotes();
   paintNav();
 }
 
 function returnToLogin(message = '') {
   sync?.stop();
   sync = null;
+  aiAnswers.clear();
   QS = []; SEC = []; BY_SEC = []; QMAP.clear();
   DB = emptyProgress(); previous = structuredClone(DB); attempts = [];
   SESS = null; VIEW = 'home';
@@ -895,4 +930,95 @@ window.addEventListener('online', () => { void sync?.flush(); });
 window.addEventListener('pagehide', () => { void sync?.flush(); });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) void sync?.flush();
+});
+
+const FILTERS = [
+  ['all','全部'], ['unseen','未刷'], ['done','已刷'], ['wrong','待复习错题'],
+  ['everwrong','历史错题'], ['fav','收藏'], ['notes','有笔记'], ['mastered','已掌握']
+];
+function questionStatus(q) {
+  const r = DB.rec[q.id];
+  return [
+    done(DB,q.id) ? '已刷' : '未刷',
+    r ? '作答 '+r.a+' 次 · 正确 '+r.c+' 次' : '',
+    DB.wrong.includes(q.id) ? '待复习错题' : '',
+    DB.mastered[q.id] ? '已掌握' : '',
+    DB.notes[q.id]?.trim() ? '有笔记' : ''
+  ].filter(Boolean).join(' · ');
+}
+function renderChapter(){
+  const section = SEC[chapter];
+  const questions = BY_SEC[chapter].filter(q=>matches(DB,q,chapterFilter));
+  $('#main').innerHTML = `<div class="page-head"><h1>${esc(section.name)}</h1>
+    <p>本章 ${section.n} 题，当前筛选 ${questions.length} 题</p></div>
+    <div class="study-filters">${FILTERS.map(([key,label])=>`<button class="btn ${chapterFilter===key?'primary':''}" data-filter="${key}">${label}</button>`).join('')}</div>
+    <div class="study-controls">
+      <label>刷题方式 <select id="chapter-mode"><option value="practice">练习模式</option><option value="read">背题模式</option><option value="test">测试模式</option></select></label>
+      <button class="btn primary" data-study="chapter-start" ${questions.length?'':'disabled'}>开始筛选后的练习</button>
+    </div>
+    <div class="list">${questions.length ? questions.map(q=>`<div class="study-row">
+      <button class="item" data-study-question="${q.id}"><div class="txt"><div>第 ${q.num} 题 · ${esc(q.stem)}</div><div class="meta">${esc(questionStatus(q))}</div></div></button>
+      <button class="btn" data-mark-question="${q.id}">${DB.marked[q.id]?'取消已刷':'标记已刷'}</button>
+    </div>`).join('') : '<p class="empty">当前筛选下没有题目。</p>'}</div>`;
+  $('#chapter-mode').value = chapterMode;
+  $('#chapter-mode').onchange = e=>{chapterMode=e.target.value;};
+}
+function renderNotes() {
+  const questions=QS.filter(q=>DB.notes[q.id]?.trim());
+  $('#main').innerHTML=`<div class="page-head"><h1>我的笔记</h1><p>${questions.length} 道题有笔记</p></div>
+    <div class="list">${questions.length ? questions.map(q=>`<button class="item" data-note-question="${q.id}"><div class="txt"><div>${esc(SEC[q.sec].name)} · 第 ${q.num} 题</div><div>${esc(q.stem)}</div><p class="note-preview">${esc(DB.notes[q.id])}</p></div></button>`).join('') : '<p class="empty">做题时可以记录笔记，系统会自动保存。</p>'}</div>`;
+}
+function startFilteredQuestion(id) {
+  const questions = BY_SEC[chapter].filter(q=>matches(DB,q,chapterFilter));
+  const ids = questions.map(q=>q.id);
+  startSession({title:SEC[chapter].name,ids,i:Math.max(0,ids.indexOf(id)),mode:chapterMode==='read'?'read':chapterFilter==='wrong'?'wrong':'seq',
+    immediate:chapterMode!=='test',minutes:chapterMode==='test'?Math.max(10,ids.length):0,key:null});
+}
+document.addEventListener('input', event=>{
+  if(event.target.id!=='question-note' || !sync) return;
+  const id=event.target.dataset.question;
+  DB.notes[id]=event.target.value;
+  saveDB();
+});
+document.addEventListener('click', async event=>{
+  if(!sync) return;
+  const filter=event.target.closest('[data-filter]');
+  if(filter){chapterFilter=filter.dataset.filter;renderChapter();return;}
+  const marked=event.target.closest('[data-mark-question]');
+  if(marked){const id=marked.dataset.markQuestion;DB.marked[id]=!DB.marked[id];saveDB();renderChapter();return;}
+  const chapterQuestion=event.target.closest('[data-study-question]');
+  if(chapterQuestion){startFilteredQuestion(chapterQuestion.dataset.studyQuestion);return;}
+  const noteQuestion=event.target.closest('[data-note-question]');
+  if(noteQuestion){startSession({title:'笔记复习',ids:[noteQuestion.dataset.noteQuestion],mode:'single'});return;}
+  const action=event.target.closest('[data-study]')?.dataset.study;
+  if(!action)return;
+  if(action==='chapter-start'){const first=BY_SEC[chapter].find(q=>matches(DB,q,chapterFilter));if(first)startFilteredQuestion(first.id);return;}
+  if(action==='smart' || action==='paper'){
+    const ids=reviewQuestions(QS,DB,action==='paper'?50:20);
+    if(!ids.length){alert('所有题目均已标记掌握，可在章节内取消掌握标记后继续复习。');return;}
+    startSession({title:action==='paper'?'智能组卷':'智能复习',ids,mode:action==='paper'?'exam':'smart',immediate:action!=='paper',minutes:action==='paper'?60:0});
+    return;
+  }
+  if(!SESS)return;
+  const q=cur();
+  if(action==='retry'){delete SESS.ans[q.id];delete SESS.pick[q.id];SESS.reviewing=false;if(SESS.mode==='read')SESS.mode='single';renderPractice();return;}
+  if(action==='marked' || action==='mastered'){DB[action][q.id]=!DB[action][q.id];saveDB();renderPractice();return;}
+  if(action==='wrong'){const index=DB.wrong.indexOf(q.id);if(index<0)DB.wrong.push(q.id);else DB.wrong.splice(index,1);saveDB();renderPractice();return;}
+  if(action==='explain'){
+    const session=SESS;
+    aiAnswers.set(q.id,{loading:true,text:'正在请求 AI 解析…'});renderPractice();
+    try {
+      const result=await sync.explain(q.id);
+      if(!sync)return;
+      aiAnswers.set(q.id,{text:result.answer});
+    } catch(error) {
+      if(!sync)return;
+      aiAnswers.set(q.id,{text:error.message});
+    }
+    if(SESS===session && cur()?.id===q.id){
+      const box=$('#ai-answer');if(box)box.textContent=aiAnswers.get(q.id)?.text||'';
+      const button=document.querySelector('[data-study="explain"]');
+      if(button){button.disabled=false;button.textContent='重新生成解析';}
+    }
+  }
 });

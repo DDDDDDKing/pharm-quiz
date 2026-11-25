@@ -1,4 +1,4 @@
-import { request } from './api.js?v=3';
+import { request } from './api.js?v=4';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -14,7 +14,7 @@ function decode64(value) {
 }
 
 export function emptyProgress() {
-  return {rec:{}, fav:[], wrong:[], pos:{}, hist:{}, autonext:false, theme:'light', exam:null};
+  return {rec:{}, fav:[], wrong:[], pos:{}, hist:{}, autonext:false, theme:'light', exam:null, notes:{}, marked:{}, mastered:{}};
 }
 
 export function applyEvent(state, event, isCorrect) {
@@ -35,6 +35,7 @@ export function applyEvent(state, event, isCorrect) {
     state[list] = [...items];
   }
   Object.assign(state.pos, event.patch.pos);
+  for (const key of ['notes','marked','mastered']) Object.assign(state[key],event.patch[key]);
   for (const key of ['autonext','theme','exam']) {
     if (Object.hasOwn(event.patch, key)) state[key] = event.patch[key];
   }
@@ -174,6 +175,7 @@ export async function connectProgress(credential, login, callbacks) {
       schedule(180);
     },
     flush,
+    explain(question) { return request('student',credential,'explain',{question}); },
     async clear() {
       while (inFlight || pending.size) {
         if (!await flush()) throw new Error('请联网并同步现有进度后再清空。');

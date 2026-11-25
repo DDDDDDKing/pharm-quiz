@@ -8,8 +8,8 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://qjnqnchqqbuzjvlkytjl.supabase.co; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>药理学刷题 · 管理端</title>
   <link rel="icon" href="../icon.svg">
-  <link rel="stylesheet" href="../quiz.css">
-  <link rel="stylesheet" href="../portal.css?v=3">
+  <link rel="stylesheet" href="../quiz.css?v=4">
+  <link rel="stylesheet" href="../portal.css?v=4">
 </head>
 <body>
 <section class="portal" id="login">
@@ -23,14 +23,14 @@
       <p id="login-error" class="form-error" role="alert"></p>
       <button class="btn primary" type="submit">登录管理端</button>
     </form>
-    <a class="portal-link" href="../?v=3">返回用户端</a>
+    <a class="portal-link" href="../?v=4">返回用户端</a>
   </div>
 </section>
 
 <main class="admin-shell" id="dashboard" hidden>
   <header>
     <h1>刷题管理端</h1>
-    <div><a href="../?v=3">打开用户端</a><button type="button" id="sign-out">退出登录</button></div>
+    <div><a href="../?v=4">打开用户端</a><button type="button" id="sign-out">退出登录</button></div>
   </header>
   <section class="admin-card">
     <h2>添加刷题 ID</h2>
@@ -65,7 +65,27 @@
       </table>
     </div>
   </section>
+  <section class="admin-card" id="student-detail" hidden>
+    <header><h2 id="detail-title">学员详情</h2><button class="btn" id="close-detail" type="button">关闭详情</button></header>
+    <label>查看范围 <select id="detail-filter"><option value="notes">有笔记的题</option><option value="all">全部学习记录</option><option value="wrong">待复习错题</option></select></label>
+    <div id="detail-content"></div>
+  </section>
+  <section class="admin-card">
+    <h2>AI 解析设置</h2>
+    <p>填写你申请的模型 API Key 并启用后，学员可使用 AI 一键解析。调用仅发送当前题目和题库解析。</p>
+    <form id="ai-form" class="ai-form">
+      <label>模型服务商<select id="ai-provider"><option value="doubao">豆包 · 火山方舟</option><option value="gemini">Google Gemini</option><option value="siliconflow">硅基流动</option></select></label>
+      <label>模型或推理接入点 ID<input id="ai-model" required maxlength="200" placeholder="按服务商控制台中的模型 ID 填写"></label>
+      <label>API Key<input id="ai-key" type="password" autocomplete="off" maxlength="1024" placeholder="已有密钥时，留空可继续使用"></label>
+      <label>每人每天调用上限<input id="ai-limit" type="number" min="1" max="100" value="20" required></label>
+      <label><input id="ai-enabled" type="checkbox">启用 AI 解析</label>
+      <p id="ai-state" role="status"></p>
+      <button type="submit" class="btn primary">保存 AI 设置</button>
+    </form>
+    <p>服务商的免费额度以账户控制台为准。可先使用豆包的安心体验模式，或查看 Gemini 的免费层。</p>
+    <p><a href="https://docs.volcengine.com/docs/ark/free-inference-quota?lang=zh" target="_blank" rel="noreferrer">豆包免费额度说明</a> · <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noreferrer">Gemini 免费层说明</a></p>
+  </section>
 </main>
-<script type="module" src="./admin.js?v=3"></script>
+<script type="module" src="./admin.js?v=4"></script>
 </body>
 </html>

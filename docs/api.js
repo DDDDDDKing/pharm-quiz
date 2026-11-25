@@ -22,7 +22,7 @@ export async function request(role, credential, action, details = {}) {
       keepalive: role === 'student' && action === 'sync' && new Blob([body]).size < 60_000,
       cache: 'no-store',
       credentials: 'omit',
-      signal: AbortSignal.timeout(20_000)
+      signal: AbortSignal.timeout(action === "explain" ? 65_000 : 20_000)
     });
     data = await response.json();
   } catch {
@@ -32,6 +32,9 @@ export async function request(role, credential, action, details = {}) {
     const denied = data.error === 'access_denied';
     const message = denied ? 'ID 无效、未开通或已停用。'
       : data.error === 'id_in_use' ? '这个 ID 已被使用，请填写另一个。'
+      : data.error === 'ai_not_configured' ? '管理员尚未启用 AI 解析，请联系管理员在后台配置模型 API。'
+      : data.error === 'ai_limit' ? '今天的 AI 调用次数已用完，明天再试。'
+      : data.error === 'ai_provider_error' ? '模型服务未返回解析，请管理员检查密钥、模型 ID 和剩余额度。'
       : '服务器暂未完成请求，请重试。';
     const error = new Error(message);
     error.denied = denied;
