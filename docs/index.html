@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://qjnqnchqqbuzjvlkytjl.supabase.co; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>药理学 · 刷题</title>
+<link rel="icon" href="./icon.svg">
+<link rel="stylesheet" href="./quiz.css">
+<link rel="stylesheet" href="./portal.css">
+</head>
+<body>
+<section class="portal" id="login">
+  <div class="login-card">
+    <div class="portal-icon" aria-hidden="true">药</div>
+    <h1>药理学刷题</h1>
+    <p>1709 道题，覆盖 9 个部分</p>
+    <form id="student-form" class="portal-form">
+      <label for="student-id">刷题 ID</label>
+      <input id="student-id" type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="输入管理端发给你的 ID" required maxlength="40">
+      <p id="login-error" class="form-error" role="alert"></p>
+      <button class="btn primary" type="submit">登录刷题</button>
+    </form>
+    <a class="portal-link" href="./admin/">进入管理端</a>
+  </div>
+</section>
+<div class="app" id="quiz" hidden>
+  <aside class="side">
+    <div class="brand"><b>药理学</b><span>1709 questions</span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <button class="iconbtn" id="themeBtn"></button>
+      <div class="tiny" id="aboutLink" style="cursor:pointer">人卫第 10 版 · 逐项解析<br>云端同步 · 关于题库</div>
+    </div>
+  </aside>
+  <div class="workspace">
+    <div class="account-bar">
+      <span class="account-label" id="account-label"></span>
+      <button type="button" class="sync-status" id="sync-status" aria-live="polite" title="点击立即同步">已同步</button>
+      <button type="button" id="sign-out">退出登录</button>
+    </div>
+    <main id="main"></main>
+  </div>
+</div>
+<div class="mobile-nav" id="mnav" hidden></div>
+<div class="modal" id="about">
+  <div class="card">
+    <h3>关于题库</h3>
+    <div class="sub">《药理学学习通题库精解》· 人卫第 10 版</div>
+    <ul>
+      <li>原书共 <b>1710 题</b>，本程序收录 <b>1709 题</b>；第八部分第 144 题原文选项整段缺失，无法作答，未收录。</li>
+      <li>原卷有 <b>6 题</b>答案字段与逐项解析矛盾（如"下列哪项错误"却标注全选），已按解析结论校正，题面标有"答案已校正"。</li>
+      <li>每题保留 <b>逐项解析</b>；较难题目附教材页码，共 143 处。</li>
+      <li>答题记录、练习进度、错题与收藏自动同步。换设备使用同一 ID 登录，即可继续练习。</li>
+    </ul>
+    <div class="acts">
+      <button class="danger" id="resetBtn">清空全部学习记录</button>
+      <button class="btn primary" id="aboutClose">知道了</button>
+    </div>
+  </div>
+</div>
+<div class="sheet" id="sheet"><div class="panel" id="sheetPanel"></div></div>
+<script type="module" src="./quiz.js"></script>
+</body>
+</html>
