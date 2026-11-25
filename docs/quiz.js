@@ -176,7 +176,7 @@ function renderHome(){
   <div class="page-head">
     <div class="eyebrow">Pharmacology · 题库精解</div>
     <h1>药理学刷题</h1>
-    <p>1709 题 · 人卫第 10 版 · 每题逐项解析与教材页码</p>
+    <p>1709 题 · 人卫第 10 版 · 逐项解析，部分题目附教材页码</p>
   </div>
   <section class="hero">
     <div class="ring" style="--p:${o.acc}">
@@ -658,6 +658,10 @@ document.addEventListener('click', e=>{
   const o = e.target.closest('[data-open]');
   if(o){
     const id = o.dataset.open;
+    if (VIEW === 'search') {
+      startSession({title:'搜题练习', ids:[id], mode:'search'});
+      return;
+    }
     const ids = (VIEW==='wrong'?DB.wrong:DB.fav).slice().reverse();
     startSession({title:VIEW==='wrong'?'错题本':'收藏夹', ids, i:Math.max(0,ids.indexOf(id)), mode:VIEW});
   }
@@ -697,7 +701,7 @@ function renderStats(){
       ${days.map(d=>`<div class="c ${d.today?'today':''}"><em>${d.label}</em></div>`).join('')}
     </div>
   </div>
-  <div class="sec-title"><h2>各部分正确率</h2><em>按首次作答统计</em></div>
+  <div class="sec-title"><h2>各部分正确率</h2><em>按练过的题统计</em></div>
   <div class="sbars">
     ${SEC.map((s,i)=>{
       const st = sectionStat(i);
