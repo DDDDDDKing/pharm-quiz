@@ -1,8 +1,8 @@
-import {isValidId, request} from './api.js?v=5';
-import {connectProgress, emptyProgress, clearQuestionRecords} from './student-sync.js?v=5';
+import {isValidId, request} from './api.js?v=6';
+import {connectProgress, emptyProgress, clearQuestionRecords} from './student-sync.js?v=6';
 
-import {done, matches, reviewQuestions, answerCardStatus} from './study.js?v=5';
-import {createComments} from './comments.js?v=5';
+import {done, matches, reviewQuestions, answerCardStatus} from './study.js?v=6';
+import {createComments} from './comments.js?v=6';
 
 let chapter = 0, chapterFilter = 'all', chapterMode = 'practice';
 let aiAnswers = new Map();
@@ -340,6 +340,7 @@ function renderPractice(){
       <button class="btn" data-study="explain" ${aiAnswers.get(q.id)?.loading?'disabled':''}>${aiAnswers.get(q.id)?.loading?'AI 正在解析…':'AI 一键解析'}</button>
       <p class="tiny">AI 解析用于学习参考，请对照教材核实。</p>
       <div class="ai-answer" id="ai-answer" aria-live="polite">${esc(aiAnswers.get(q.id)?.text||'')}</div>
+      <p id="ai-upgrade" class="tiny" ${aiAnswers.get(q.id)?.limited?'':'hidden'}>¥9.9 可加购 1,000 次 AI 解析，按实际使用扣减。联系 <a href="mailto:HenryKirschman0846@outlook.com">HenryKirschman0846@outlook.com</a> 购买，邮件中请注明刷题 ID。</p>
     </section>
     <div class="pfoot fix">
       <button class="btn ghost favbtn ${isFav?'on':''}" data-act="fav">${ICON.star}${isFav?'已收藏':'收藏'}</button>
@@ -1071,10 +1072,12 @@ document.addEventListener('click', async event=>{
       aiAnswers.set(q.id,{text:result.answer});
     } catch(error) {
       if(!sync)return;
-      aiAnswers.set(q.id,{text:error.message});
+      aiAnswers.set(q.id,{text:error.message,limited:error.code==='ai_limit'});
     }
     if(SESS===session && cur()?.id===q.id){
       const box=$('#ai-answer');if(box)box.textContent=aiAnswers.get(q.id)?.text||'';
+      const upgrade=$('#ai-upgrade');
+      if(upgrade)upgrade.hidden=!aiAnswers.get(q.id)?.limited;
       const button=document.querySelector('[data-study="explain"]');
       if(button){button.disabled=false;button.textContent='重新生成解析';}
     }

@@ -1,4 +1,4 @@
-import {isValidId, request} from '../api.js?v=5';
+import {isValidId, request} from '../api.js?v=6';
 
 const $ = selector => document.querySelector(selector);
 const seenFormat = new Intl.DateTimeFormat('zh-CN', {
@@ -8,6 +8,7 @@ let credential;
 let busy = false;
 let session = 0;
 let detail;
+let quotaAccount;
 
 function feedback(text, error = false) {
   $('#feedback').textContent = text;
@@ -49,6 +50,13 @@ function render(students) {
       detail=data;$('#student-detail').hidden=false;$('#detail-title').textContent=data.label+' · 作答与评论';
       renderDetail();$('#student-detail').scrollIntoView({behavior:'smooth',block:'start'});
     }));
+    const quota = document.createElement('button');
+    quota.type = 'button';
+    quota.textContent = '设置额度';
+    quota.addEventListener('click', () => openQuota(student));
+    const quotaCell = row.insertCell();
+    quotaCell.append(document.createTextNode('今日 '+student.ai_used_today+'/'+student.ai_daily_limit+
+      ' · 升级剩余 '+student.ai_balance),document.createElement('br'),quota);
     row.insertCell().append(inspect,document.createTextNode(' '),button);
     return row;
   });
@@ -57,6 +65,7 @@ function render(students) {
 
 function signOut(message = '') {
   session++;
+  $('#quota-dialog').close();
   credential = null;
   busy = false;
   $('#dashboard').hidden = true;
@@ -209,5 +218,62 @@ $('#ai-form').onsubmit=event=>{
     });
     if(current!==session)return;
     showAiSettings(settings);feedback('AI 设置已保存。');
+    const result = await request('admin',id,'list');
+    if(current===session)render(result.students);
   });
+};
+
+function showQuota(student) {
+  quotaAccount = student.id;
+  $('#quota-title').textContent = student.label + ' · AI 额度';
+  $('#quota-status').textContent = '今日免费已用 '+student.ai_used_today+' / '+student.ai_daily_limit+
+    ' 次，升级剩余 '+student.ai_balance+' 次。';
+  $('#quota-daily').value = student.ai_override ?? '';
+  $('#quota-adjustment').value = '';
+}
+function openQuota(student) {
+  showQuota(student);
+  $('#quota-feedback').textContent = '';
+  $('#quota-dialog').showModal();
+}
+async function updateQuota(button, change) {
+  if (!credential || busy) return;
+  const key = credential;
+  const account = quotaAccount;
+  const status = $('#quota-feedback');
+  busy = true;
+  button.disabled = true;
+  status.textContent = '正在保存…';
+  try {
+    await request('admin',key,'ai_quota',{account,...change});
+    status.textContent = '已保存。';
+    const result = await request('admin',key,'list');
+    if (key !== credential) return;
+    render(result.students);
+    const student = result.students.find(item => item.id === account);
+    if (student) showQuota(student);
+  } catch(error) {
+    if (key !== credential) return;
+    if (error.denied) signOut(error.message);
+    else status.textContent = (status.textContent==='已保存。' ? '已保存，关闭窗口后刷新可查看最新余额。' : error.message);
+  } finally {
+    busy = false;
+    button.disabled = false;
+  }
+}
+$('#quota-close').onclick = () => $('#quota-dialog').close();
+$('#quota-form').onsubmit = event => {
+  event.preventDefault();
+  const value = $('#quota-daily').value;
+  void updateQuota(event.submitter,{dailyLimit:value===''?null:Number(value)});
+};
+$('#balance-form').onsubmit = event => {
+  event.preventDefault();
+  const adjustment = Number($('#quota-adjustment').value);
+  if (adjustment) void updateQuota(event.submitter,{adjustment});
+};
+$('#quota-package').onclick = event => {
+  if (confirm('确认已经收到 ¥9.9 并为该学员增加 1,000 次？')) {
+    void updateQuota(event.currentTarget,{adjustment:1000});
+  }
 };

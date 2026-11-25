@@ -33,11 +33,13 @@ export async function request(role, credential, action, details = {}) {
     const message = denied ? 'ID 无效、未开通或已停用。'
       : data.error === 'id_in_use' ? '这个 ID 已被使用，请填写另一个。'
       : data.error === 'ai_not_configured' ? '管理员尚未启用 AI 解析，请联系管理员在后台配置模型 API。'
-      : data.error === 'ai_limit' ? '今天的 AI 调用次数已用完，明天再试。'
+      : data.error === 'ai_limit' ? '今日免费额度和升级余额均已用完。'
+      : data.error === 'ai_quota_update' ? '额度未更新，请刷新后确认学员和余额。'
       : data.error === 'ai_provider_error' ? '模型服务未返回解析，请管理员检查密钥、模型 ID 和剩余额度。'
       : '服务器暂未完成请求，请重试。';
     const error = new Error(message);
     error.denied = denied;
+    error.code = data.error;
     throw error;
   }
   return data;

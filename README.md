@@ -12,3 +12,5 @@
 AI 一键解析需要管理员在后台配置模型服务商、模型 ID 和 API Key。支持豆包火山方舟、Gemini 的 OpenAI 兼容接口和硅基流动。火山方舟的预填模型为 doubao-seed-2-0-mini-260428，可按控制台实际可用模型修改。API Key 存于非公开数据库 schema，由 Edge Function 调用服务商，浏览器无法读取已保存的密钥。仅发送题目、选项和题库解析。后台可设置每人每天调用上限。免费额度、付费条件以对应服务商账户为准。未配置时界面会明确提示。
 
 GitHub Pages 发布 main 分支的 /docs。Supabase schema 在 supabase/schema.sql，API 在 supabase/functions/pharm-quiz/index.js。
+
+普通学员默认每天有 20 次免费解析，按北京时间换日。管理员可为单个学员调整每日免费次数或升级余额。用完每日额度后才消耗升级余额。¥9.9 对应额外 1,000 次解析，邮件联系后由管理员充值。

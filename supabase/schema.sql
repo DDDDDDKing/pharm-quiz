@@ -219,13 +219,30 @@ alter table pharm.ai_usage enable row level security;
 grant select,update on pharm.ai_settings to service_role;
 grant select,insert,update on pharm.ai_usage to service_role;
 
+alter table pharm.accounts
+  add column ai_daily_limit integer check (ai_daily_limit between 0 and 1000),
+  add column ai_balance bigint not null default 0 check (ai_balance >= 0);
+
+create table pharm.ai_reservations (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references pharm.accounts(id) on delete cascade,
+  free_day date
+);
+create index ai_reservations_account on pharm.ai_reservations(account_id);
+alter table pharm.ai_reservations enable row level security;
+grant select,insert,delete on pharm.ai_reservations to service_role;
+
 create or replace function public.pharm_quiz_ai(p_hash text, p_question text) returns jsonb
 language plpgsql security invoker set search_path='' as $$
 declare
   learner pharm.accounts%rowtype;
   config pharm.ai_settings%rowtype;
   question jsonb;
+  today date := (now() at time zone 'Asia/Shanghai')::date;
+  allowance integer;
   used integer;
+  reservation uuid;
+  free_day date;
 begin
   select * into learner from pharm.accounts where credential_hash=decode(p_hash,'hex') and role='student' and active for update;
   if not found then return '{"error":"access_denied"}'::jsonb; end if;
@@ -233,14 +250,47 @@ begin
   if not config.enabled or config.api_key='' or config.model='' then return '{"error":"ai_not_configured"}'::jsonb; end if;
   select data into question from pharm.questions where id=p_question;
   if question is null then return '{"error":"not_found"}'::jsonb; end if;
-  insert into pharm.ai_usage as usage(account_id,day,count)
-    values(learner.id,(now() at time zone 'Asia/Shanghai')::date,1)
-    on conflict(account_id,day) do update set count=usage.count+1
-    where usage.count<config.daily_limit returning count into used;
-  if used is null then return '{"error":"ai_limit"}'::jsonb; end if;
-  return jsonb_build_object('provider',config.provider,'model',config.model,'key',config.api_key,'question',question);
+
+  allowance := coalesce(learner.ai_daily_limit,config.daily_limit);
+  if allowance > 0 then
+    insert into pharm.ai_usage as usage(account_id,day,count) values(learner.id,today,1)
+      on conflict(account_id,day) do update set count=usage.count+1
+      where usage.count<allowance returning count into used;
+  end if;
+  if used is not null then
+    free_day := today;
+  elsif learner.ai_balance > 0 then
+    update pharm.accounts set ai_balance=ai_balance-1 where id=learner.id
+      returning ai_balance into learner.ai_balance;
+  else
+    return '{"error":"ai_limit"}'::jsonb;
+  end if;
+  insert into pharm.ai_reservations(account_id,free_day)
+    values(learner.id,free_day) returning id into reservation;
+  return jsonb_build_object('provider',config.provider,'model',config.model,'key',config.api_key,
+    'question',question,'reservation',reservation,'freeRemaining',greatest(allowance-coalesce(used,allowance),0),
+    'balance',learner.ai_balance);
 end;
 $$;
+
+create function public.pharm_quiz_ai_finish(p_reservation uuid,p_success boolean) returns void
+language plpgsql security invoker set search_path='' as $$
+declare
+  debit pharm.ai_reservations%rowtype;
+begin
+  delete from pharm.ai_reservations where id=p_reservation returning * into debit;
+  if not found or p_success then return; end if;
+  if debit.free_day is null then
+    update pharm.accounts set ai_balance=ai_balance+1 where id=debit.account_id;
+  else
+    update pharm.ai_usage set count=count-1
+      where account_id=debit.account_id and day=debit.free_day and count>0;
+  end if;
+end;
+$$;
+revoke all on function public.pharm_quiz_ai_finish(uuid,boolean) from public,anon,authenticated;
+grant execute on function public.pharm_quiz_ai_finish(uuid,boolean) to service_role;
+
 revoke all on function public.pharm_quiz_ai(text,text) from public,anon,authenticated;
 grant execute on function public.pharm_quiz_ai(text,text) to service_role;
 
@@ -376,6 +426,18 @@ begin
     if changed_id is null then return '{"error":"id_in_use"}'::jsonb; end if;
     return jsonb_build_object('credential', issued, 'id', changed_id);
   end if;
+  if p_action = 'ai_quota' then
+    if p_body ? 'dailyLimit' then
+      update pharm.accounts set ai_daily_limit=(p_body->>'dailyLimit')::integer
+        where id=(p_body->>'account')::uuid and role='student' returning id into changed_id;
+    else
+      update pharm.accounts set ai_balance=ai_balance+(p_body->>'adjustment')::integer
+        where id=(p_body->>'account')::uuid and role='student'
+          and ai_balance+(p_body->>'adjustment')::integer>=0 returning id into changed_id;
+    end if;
+    if changed_id is null then return '{"error":"ai_quota_update"}'::jsonb; end if;
+    return '{"ok":true}'::jsonb;
+  end if;
   if p_action = 'set_active' then
     update pharm.accounts set active = (p_body->>'active')::boolean
       where id = (p_body->>'account')::uuid and role = 'student' returning id into changed_id;
@@ -386,10 +448,15 @@ begin
   select coalesce(jsonb_agg(row_view order by row_view.created_at desc), '[]'::jsonb) into rows
   from (
     select a.id, a.hint, a.label, a.active, a.created_at, a.last_seen,
+      a.ai_daily_limit as ai_override,a.ai_balance,
+      coalesce(a.ai_daily_limit,config.daily_limit) as ai_daily_limit,
+      coalesce(usage.count,0) as ai_used_today,
       metrics.distinct_questions, metrics.attempts, metrics.correct,
       jsonb_array_length(a.state->'wrong') as wrong,
       jsonb_array_length(a.state->'fav') as favorites
     from pharm.accounts a
+    cross join pharm.ai_settings config
+    left join pharm.ai_usage usage on usage.account_id=a.id and usage.day=(now() at time zone 'Asia/Shanghai')::date
     cross join lateral (
       select count(*) as distinct_questions,
         coalesce(sum((value->>'a')::bigint), 0) as attempts,
