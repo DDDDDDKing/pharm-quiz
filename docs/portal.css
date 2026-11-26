@@ -93,3 +93,28 @@ button:disabled { cursor: default; }
 .order-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 8px; }
 .order-toolbar select { font:inherit; color:var(--ink); background:var(--surf); padding:6px; border:1px solid var(--line); border-radius:7px; }
 .order-actions { display:flex; gap:10px; }
+
+.portal-footer { display:flex; flex-wrap:wrap; gap:6px 18px; align-items:center; }
+.portal-footer button { color:var(--accent); padding:0; }
+.welcome-dialog { width:min(calc(100% - 24px), 580px); max-height:calc(100dvh - 24px); margin:auto; padding:clamp(18px,4vw,30px); border:1px solid var(--line); border-radius:20px; background:var(--surf); color:var(--ink); box-shadow:var(--shadow); overflow:auto; }
+.welcome-dialog::backdrop { background:#10231f99; }
+.welcome-dialog .portal-icon { margin-bottom:12px; }
+.welcome-dialog h2 { margin:0 0 7px; font-size:clamp(22px,5vw,29px); }
+.welcome-dialog p { margin:0; line-height:1.65; color:var(--ink2); }
+.welcome-features { margin:14px 0; }
+.welcome-features div { display:grid; grid-template-columns:78px minmax(0,1fr); align-items:baseline; gap:10px; border-bottom:1px solid var(--line2); padding:8px 0; font-size:14px; }
+.welcome-features dt { font-weight:650; }
+.welcome-features dd { margin:0; line-height:1.55; color:var(--ink2); }
+.welcome-dialog .trial-note { padding:10px 12px; border-radius:10px; background:var(--accent-soft); color:var(--ink); font-size:13px; }
+.welcome-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:16px; }
+.welcome-actions .btn { min-height:42px; }
+.welcome-dialog #trial-error { color:var(--bad); margin-top:8px; font-size:13px; }
+.trial-lock { max-width:420px; }
+.chap[data-trial-locked] .meta span:last-child { color:var(--accent); }
+.trial-locked-row .meta { color:var(--accent); }
+.ai-progress { height:7px; margin-bottom:11px; border-radius:999px; background:var(--accent-soft); overflow:hidden; }
+.ai-progress span { display:block; width:37%; height:100%; border-radius:inherit; background:var(--accent); animation:ai-progress-sweep 1.45s cubic-bezier(.5,.1,.45,.95) infinite; }
+@keyframes ai-progress-sweep { from { transform:translateX(-105%); } to { transform:translateX(275%); } }
+@media (prefers-reduced-motion:reduce) {
+  .ai-progress span { transform:translateX(85%); animation:none; }
+}
