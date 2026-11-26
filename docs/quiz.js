@@ -13,6 +13,8 @@ let previous = structuredClone(DB);
 let attempts = [];
 let sync;
 let mountComments;
+let trial = false;
+const TRIAL_QUESTION_COUNT = 50;
 
 function changedMembers(before, after) {
   const old = new Set(before);
@@ -24,6 +26,10 @@ function changedMembers(before, after) {
 }
 
 function saveDB(extra = {}) {
+  if (trial) {
+    attempts = [];
+    return;
+  }
   if (!sync) return;
   const patch = {...extra};
   for (const list of ['fav', 'wrong']) {
@@ -166,7 +172,11 @@ document.addEventListener('click', e=>{
 
 /* ---------------- router ---------------- */
 function go(v){
-  if (!sync) return;
+  if (!sync && !trial) return;
+  if (trial && v === 'comments') {
+    showTrialLock();
+    return;
+  }
   VIEW = v;
   if(v!=='practice') toggleSheet(false);
   if(v==='practice'){ renderPractice(); }
@@ -194,7 +204,7 @@ function renderHome(){
   <div class="page-head">
     <div class="eyebrow">Pharmacology · 题库精解</div>
     <h1>药理学刷题</h1>
-    <p>1709 题 · 人卫第 10 版 · 逐项解析，部分题目附教材页码</p>
+    <p>${trial ? '体验范围：第一部分前 50 题' : '1709 题 · 人卫第 10 版 · 逐项解析，部分题目附教材页码'}</p>
   </div>
   <section class="hero">
     <div class="ring" style="--p:${o.acc}">
@@ -215,15 +225,16 @@ function renderHome(){
     <button class="qbtn" data-act="wrong"><b>错题重练</b><span>${DB.wrong.length} 题待复习</span></button>
     <button class="qbtn" data-act="exam"><b>${DB.exam ? '继续模拟考' : '模拟考'}</b><span>50 题 · 60 分钟 · 交卷评分</span></button>
   </div>
-  <div class="sec-title"><h2>按部分练习</h2><em>9 个部分，共 ${QS.length} 题</em></div>
+  <div class="sec-title"><h2>按部分练习</h2><em>${SEC.length} 个部分 · ${trial ? "可体验 50 题" : "共 " + QS.length + " 题"}</em></div>
   <div class="chapters">
     ${SEC.map((s,i)=>{
       const st2 = sectionStat(i);
-      return `<button class="chap" data-sec="${i}">
+      const locked = trial && i !== 0;
+      return `<button class="chap" data-sec="${i}" ${locked ? 'data-trial-locked' : ''}>
         <div class="row1"><span class="no">${String(i+1).padStart(2,'0')}</span><span>${s.n} 题</span></div>
         <h3>${esc(s.name)}</h3>
         <div class="track"><i style="width:${pct(st2.done, st2.n)}%"></i></div>
-        <div class="meta"><span>已练 ${st2.done}</span><span>${st2.done?st2.acc+'%':'—'}</span></div>
+        <div class="meta"><span>${locked ? '开通后练习' : '已练 ' + st2.done}</span><span>${locked ? '注册开通' : trial ? '体验前 50 题' : st2.done ? st2.acc + '%' : '—'}</span></div>
       </button>`;
     }).join('')}
   </div>`;
@@ -244,6 +255,7 @@ document.addEventListener('click', e=>{
     else startSession({title:'模拟考', ids:shuffle(QS.map(q=>q.id)).slice(0,50), mode:'exam', immediate:false, minutes:60});
   }
   else if(act==='next') nextQ();
+  else if(act==='finish-trial' && trial && SESS) finishSession();
   else if(act==='prev') prevQ();
   else if(act==='fav') toggleFav();
   else if(act==='submit') submitMulti();
@@ -256,7 +268,16 @@ document.addEventListener('click', e=>{
   else if(act==='autonext'){ DB.autonext = !DB.autonext; saveDB(); renderPractice(); }
 });
 document.addEventListener('click', e=>{
-  const c = e.target.closest('[data-sec]'); if(c){ chapter=+c.dataset.sec; chapterFilter='all'; go('chapter'); }
+  const c = e.target.closest('[data-sec]');
+  if (!c) return;
+  const section = Number(c.dataset.sec);
+  if (trial && section !== 0) {
+    showTrialLock();
+    return;
+  }
+  chapter = section;
+  chapterFilter = 'all';
+  go('chapter');
 });
 
 /* ---------------- session ---------------- */
@@ -333,22 +354,25 @@ function renderPractice(){
       <button class="btn" data-study="mastered">${DB.mastered[q.id]?'取消掌握标记':'标记已掌握'}</button>
       <button class="btn" data-study="wrong">${DB.wrong.includes(q.id)?'移出错题本':'加入错题本'}</button>
     </div>
+    ${trial ? '<div class="study-note"><button class="btn ghost" type="button" data-trial-unlock>题目评论</button></div>' : `
     <details class="study-note comment-panel">
       <summary>题目评论</summary>
       <div id="question-comments"></div>
-    </details>
+    </details>`}
     <section class="study-ai">
       <button class="btn" data-study="explain" ${aiAnswers.get(q.id)?.loading?'disabled':''}>${aiAnswers.get(q.id)?.loading?'AI 正在解析…':'AI 一键解析'}</button>
-      <p class="tiny">AI 解析用于学习参考，请对照教材核实。</p>
+      <p class="tiny">${trial ? '开通后可使用 AI 解题。' : 'AI 解析用于学习参考，请对照教材核实。'}</p>
+      ${aiAnswers.get(q.id)?.loading ? '<div class="ai-progress" id="ai-progress" role="progressbar" aria-label="正在生成 AI 解析"><span></span></div>' : ''}
       <div class="ai-answer" id="ai-answer" aria-live="polite">${esc(aiAnswers.get(q.id)?.text||'')}</div>
       <button id="ai-upgrade" class="btn" data-study="ai-purchase" ${aiAnswers.get(q.id)?.limited?'':'hidden'}>加购 100 次 AI 解析</button>
     </section>
     <div class="pfoot fix">
       <button class="btn ghost favbtn ${isFav?'on':''}" data-act="fav">${ICON.star}${isFav?'已收藏':'收藏'}</button>
       <div class="sp"></div>
+      ${atTrialBoundary() ? '<button class="btn ghost" type="button" data-act="finish-trial">结束本轮</button>' : ''}
       <button class="btn" data-act="prev" ${SESS.i===0?'disabled':''}>${ICON.left}上一题</button>
       ${(SESS.immediate && !answered && q.m) ? `<button class="btn primary" data-act="submit" ${picked.length?'':'disabled'}>提交答案${picked.length?` (${picked.length})`:''}</button>`
-        : `<button class="btn primary" data-act="next">${SESS.i===total-1?(SESS.immediate?'完成':'交卷'):'下一题'}${ICON.right}</button>`}
+        : `<button class="btn primary" data-act="next">${SESS.i===total-1 && !atTrialBoundary() ? (SESS.immediate ? '完成' : '交卷') : '下一题'}${ICON.right}</button>`}
     </div>
   </article>`;
 
@@ -437,7 +461,7 @@ function grade(){
   }
   renderPractice(); paintNav();
   const currentSession = SESS;
-  if(DB.autonext && ok && SESS.mode!=='read'){ setTimeout(()=>{ if(VIEW==='practice' && SESS===currentSession && cur()?.id===q.id) nextQ(); }, 620); }
+  if(DB.autonext && ok && SESS.mode!=='read' && !atTrialBoundary()){ setTimeout(()=>{ if(VIEW==='practice' && SESS===currentSession && cur()?.id===q.id) nextQ(); }, 620); }
 }
 
 function record(q, ok, selection){
@@ -457,8 +481,15 @@ function record(q, ok, selection){
   DB.hist[d] = h;
 }
 
+function atTrialBoundary() {
+  return trial && SESS.immediate && !SESS.reviewing && ['seq','read'].includes(SESS.mode)
+    && SESS.ids.length === TRIAL_QUESTION_COUNT && SESS.i === SESS.ids.length - 1
+    && cur()?.num === TRIAL_QUESTION_COUNT && SEC[0].n > TRIAL_QUESTION_COUNT;
+}
+
 function nextQ(){
   if(!SESS) return;
+  if(atTrialBoundary()){ showTrialLock(); return; }
   if(SESS.i >= SESS.ids.length-1){
     if (SESS.reviewing) { SESS.submitted = true; go('result'); return; }
     if(SESS.immediate) finishSession(); else handIn();
@@ -569,6 +600,7 @@ function finishSession(){
   </div>
   <div class="pfoot" style="justify-content:center">
     <button class="btn" data-act="restart">回到首页</button>
+    ${trial ? '<button class="btn ghost" type="button" data-trial-unlock>开通完整题库</button>' : ''}
     ${wrongIds.length?`<button class="btn primary" data-act="retryWrong">重做错题 ${wrongIds.length} 道</button>`:''}
   </div>`;
   paintNav();
@@ -810,7 +842,7 @@ function doSearch(kw){
 
 /* ---------------- keyboard ---------------- */
 document.addEventListener('keydown', e=>{
-  if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') return;
+  if(document.querySelector('dialog[open]') || e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') return;
   if(VIEW!=='practice' || !SESS) return;
   const q = cur(); if(!q) return;
   const key = e.key.toUpperCase();
@@ -822,6 +854,7 @@ document.addEventListener('keydown', e=>{
     return;
   }
   if(e.key==='Enter'){
+    if (e.target.closest('[data-study="explain"], [data-trial-unlock], [data-act="finish-trial"]')) return;
     e.preventDefault();
     if(SESS.immediate && SESS.mode!=='read' && !SESS.ans[q.id] && q.m) submitMulti(); else nextQ();
     return;
@@ -858,6 +891,9 @@ function updateProgress(data, reset) {
 function returnToLogin(message = '') {
   sync?.stop();
   sync = null;
+  trial = false;
+  chapter = 0; chapterFilter = 'all'; chapterMode = 'practice';
+  closeTrialDialogs();
   mountComments = null;
   aiAnswers.clear();
   QS = []; SEC = []; BY_SEC = []; QMAP.clear();
@@ -878,13 +914,30 @@ function returnToLogin(message = '') {
   auth.showLogin(message);
 }
 
-const auth = setupStudentAuth(async (credential, legacyId) => {
-  const result = await request('student', credential, 'login');
-  if (!Array.isArray(result.bank?.qs) || !Array.isArray(result.bank?.sections)) throw new Error('题库暂不可用，请稍后重试。');
-  QS = result.bank.qs;
-  SEC = result.bank.sections;
+function loadBank(bank) {
+  if (!Array.isArray(bank?.qs) || !Array.isArray(bank?.sections)) throw new Error('题库暂不可用，请稍后重试。');
+  QS = bank.qs;
+  SEC = bank.sections;
   QMAP = new Map(QS.map(q => [q.id, q]));
   BY_SEC = SEC.map(section => QS.filter(q => q.sec === section.i));
+}
+
+function enterQuiz(label) {
+  closeTrialDialogs();
+  $('#account-label').textContent = label;
+  $('#bank-count').textContent = trial ? '体验 50 题' : '1709 questions';
+  $('#sync-status').hidden = trial;
+  $('#sign-out').textContent = trial ? '退出体验' : '退出登录';
+  $('#resetBtn').hidden = trial;
+  $('#login').hidden = true;
+  $('#quiz').hidden = false;
+  $('#mnav').hidden = false;
+}
+
+const auth = setupStudentAuth(async (credential, legacyId) => {
+  const result = await request('student', credential, 'login');
+  if (trial) returnToLogin();
+  loadBank(result.bank);
   sync = await connectProgress(credential, result, {
     status(text, error) {
       const status = $('#sync-status');
@@ -905,12 +958,9 @@ const auth = setupStudentAuth(async (credential, legacyId) => {
     },
     openQuestion(id) { startSession({title:'评论原题',ids:[id],mode:'single'}); }
   });
-  $('#account-label').textContent = result.nickname;
+  enterQuiz(result.nickname);
   $('#sync-status').textContent = '已同步';
   $('#sync-status').dataset.state = 'ok';
-  $('#login').hidden = true;
-  $('#quiz').hidden = false;
-  $('#mnav').hidden = false;
   updateProgress(sync.snapshot(), false);
   go('home');
   sync.start();
@@ -958,7 +1008,7 @@ function renderChapter(){
   const section = SEC[chapter];
   const questions = BY_SEC[chapter].filter(q=>matches(DB,q,chapterFilter));
   $('#main').innerHTML = `<div class="page-head"><h1>${esc(section.name)}</h1>
-    <p>本章 ${section.n} 题，当前筛选 ${questions.length} 题</p></div>
+    <p>${trial ? '本章可体验前 50 题' : '本章 ' + section.n + ' 题'}，当前筛选 ${questions.length} 题</p></div>
     <div class="study-filters">${FILTERS.map(([key,label])=>`<button class="btn ${chapterFilter===key?'primary':''}" data-filter="${key}">${label}</button>`).join('')}</div>
     <div class="study-controls">
       <label>刷题方式 <select id="chapter-mode"><option value="practice">练习模式</option><option value="read">背题模式</option><option value="test">测试模式</option></select></label>
@@ -966,7 +1016,10 @@ function renderChapter(){
     </div>
     <div class="list">${questions.length ? questions.map(q=>`<div class="study-row">
       <button class="item" data-study-question="${q.id}"><div class="txt"><div>第 ${q.num} 题 · ${esc(q.stem)}</div><div class="meta">${esc(questionStatus(q))}</div></div></button>
-    </div>`).join('') : '<p class="empty">当前筛选下没有题目。</p>'}</div>`;
+    </div>`).join('') : '<p class="empty">当前筛选下没有题目。</p>'}
+    ${trial && section.n > TRIAL_QUESTION_COUNT ? `<button class="item trial-locked-row" type="button" data-trial-unlock>
+      <span class="txt"><span>第 51–${section.n} 题</span><span class="meta">注册开通后练习</span></span>
+    </button>` : ''}</div>`;
   $('#chapter-mode').value = chapterMode;
   $('#chapter-mode').onchange = e=>{chapterMode=e.target.value;};
 }
@@ -1011,7 +1064,7 @@ function clearAnswerRecords(ids, label) {
 }
 
 document.addEventListener('click', async event=>{
-  if(!sync) return;
+  if(!sync && !trial) return;
   const filter=event.target.closest('[data-filter]');
   if(filter){chapterFilter=filter.dataset.filter;renderChapter();return;}
   const chapterQuestion=event.target.closest('[data-study-question]');
@@ -1047,9 +1100,12 @@ document.addEventListener('click', async event=>{
   }
   if(action==='mastered'){DB[action][q.id]=!DB[action][q.id];saveDB();renderPractice();return;}
   if(action==='wrong'){const index=DB.wrong.indexOf(q.id);if(index<0)DB.wrong.push(q.id);else DB.wrong.splice(index,1);saveDB();renderPractice();return;}
+  if (trial && (action === 'explain' || action === 'ai-purchase')) {
+    showTrialLock();
+    return;
+  }
   if(action==='ai-purchase'){openAiPurchase();return;}
   if(action==='explain'){
-    const session=SESS;
     const connection=sync;
     if(!connection)return;
     aiAnswers.set(q.id,{loading:true,text:'正在请求 AI 解析…'});renderPractice();
@@ -1060,20 +1116,23 @@ document.addEventListener('click', async event=>{
     } catch(error) {
       if(sync!==connection)return;
       aiAnswers.set(q.id,{text:error.message,limited:error.code==='ai_limit'});
-      if(error.code==='ai_limit' && SESS===session && cur()?.id===q.id)openAiPurchase();
     }
-    if(SESS===session && cur()?.id===q.id){
-      const box=$('#ai-answer');if(box)box.textContent=aiAnswers.get(q.id)?.text||'';
+    if(VIEW==='practice' && SESS && !SESS.submitted && cur()?.id===q.id){
+      const answer = aiAnswers.get(q.id);
+      $('#ai-progress')?.remove();
+      const box=$('#ai-answer');if(box)box.textContent=answer?.text||'';
       const upgrade=$('#ai-upgrade');
-      if(upgrade)upgrade.hidden=!aiAnswers.get(q.id)?.limited;
+      if(upgrade)upgrade.hidden=!answer?.limited;
       const button=document.querySelector('[data-study="explain"]');
       if(button){button.disabled=false;button.textContent='重新生成解析';}
+      if(answer?.limited)openAiPurchase();
     }
   }
 });
 
 
 function openAiPurchase() {
+  if (trial) return;
   const dialog = $('#ai-purchase-dialog');
   if (!dialog.open) dialog.showModal();
 }
@@ -1106,3 +1165,52 @@ $('#ai-order-form').addEventListener('submit', async event => {
     button.disabled = false;
   }
 });
+
+function closeTrialDialogs() {
+  for (const id of ['quiz-intro','trial-lock']) {
+    const dialog = document.getElementById(id);
+    if (dialog.open) dialog.close();
+  }
+}
+
+function showTrialLock() {
+  const dialog = $('#trial-lock');
+  if (trial && !dialog.open) dialog.showModal();
+}
+
+const intro = $('#quiz-intro');
+$('#show-intro').addEventListener('click', () => intro.showModal());
+$('#intro-login').addEventListener('click', () => intro.close());
+$('#close-trial-lock').addEventListener('click', () => $('#trial-lock').close());
+$('#trial-register').addEventListener('click', () => {
+  returnToLogin();
+  $('#student-form [data-auth-view="register"]').click();
+});
+document.addEventListener('click', event => {
+  if (event.target.closest('[data-trial-unlock]')) showTrialLock();
+});
+$('#start-trial').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  const errorNotice = $('#trial-error');
+  button.disabled = true;
+  errorNotice.hidden = true;
+  try {
+    const response = await fetch('./trial-bank.json?v=1', {signal:AbortSignal.timeout(12_000)});
+    if (!response.ok) throw new Error('Trial bank unavailable');
+    const bank = await response.json();
+    if (bank.qs?.length !== TRIAL_QUESTION_COUNT || !bank.qs.every((q,i) => q.sec === 0 && q.num === i + 1)) {
+      throw new Error('Invalid trial bank');
+    }
+    if (!intro.open || sync || $('#login').hidden) return;
+    loadBank(bank);
+    trial = true;
+    enterQuiz('免费体验 · 第一部分前 50 题');
+    startSection(0, 0);
+  } catch {
+    errorNotice.textContent = '暂时无法加载体验题，请稍后重试。';
+    errorNotice.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+});
+intro.showModal();

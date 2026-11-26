@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://qjnqnchqqbuzjvlkytjl.supabase.co; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://qjnqnchqqbuzjvlkytjl.supabase.co; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>药理学 · 刷题</title>
 <link rel="icon" href="./icon.svg">
 <link rel="stylesheet" href="./quiz.css?v=6">
-<link rel="stylesheet" href="./portal.css?v=10">
+<link rel="stylesheet" href="./portal.css?v=11">
 </head>
 <body>
 <section class="portal" id="login">
@@ -62,12 +62,41 @@
     </form>
     <p id="login-error" class="auth-message" role="alert" hidden></p>
     <p class="tiny">开通或登录异常请联系 <a href="mailto:HenryKirschman0846@outlook.com">HenryKirschman0846@outlook.com</a></p>
-    <a class="portal-link" href="./admin/?v=10">进入管理端</a>
+    <div class="portal-footer">
+      <button class="portal-link" id="show-intro" type="button">题库介绍与体验</button>
+      <a class="portal-link" href="./admin/?v=10">进入管理端</a>
+    </div>
   </div>
 </section>
+<dialog id="quiz-intro" class="welcome-dialog" aria-labelledby="quiz-intro-title">
+  <div class="portal-icon" aria-hidden="true">药</div>
+  <h2 id="quiz-intro-title">药理学 A 课程刷题</h2>
+  <p>适用于某大学医学院《药理学 A》课程考试复习，收录 9 个部分、1709 道题。</p>
+  <dl class="welcome-features">
+    <div><dt>逐项解析</dt><dd>作答后查看正确答案，以及每个选项为什么对或错。部分题目附教材页码。</dd></div>
+    <div><dt>AI 解题</dt><dd>遇到难题可一键生成解析，梳理解题思路、易错选项和记忆要点。</dd></div>
+    <div><dt>题目评论</dt><dd>在每道题下看其他学员的解法、分享思路，也能收藏有用的评论。</dd></div>
+    <div><dt>错题本</dt><dd>答错的题自动收录，可按部分筛选并集中重练。</dd></div>
+    <div><dt>收藏题目</dt><dd>随手收藏重点题，复习时直接从收藏夹打开。</dd></div>
+  </dl>
+  <p class="trial-note">免费体验第一部分第 1–50 题，含逐项解析、错题本和收藏。AI 解题和评论在开通后可用。</p>
+  <p class="auth-message" id="trial-error" role="alert" hidden></p>
+  <div class="welcome-actions">
+    <button class="btn ghost" id="intro-login" type="button">返回登录</button>
+    <button class="btn primary" id="start-trial" type="button">免费体验 50 题</button>
+  </div>
+</dialog>
+<dialog id="trial-lock" class="welcome-dialog trial-lock" aria-labelledby="trial-lock-title">
+  <h2 id="trial-lock-title">开通完整题库</h2>
+  <p>体验范围为第一部分第 1–50 题。注册开通后，可练习全部 1709 题、使用 AI 解题并参与评论。</p>
+  <div class="welcome-actions">
+    <button class="btn ghost" id="close-trial-lock" type="button">继续体验</button>
+    <button class="btn primary" id="trial-register" type="button">注册开通 · ¥9.90</button>
+  </div>
+</dialog>
 <div class="app" id="quiz" hidden>
   <aside class="side">
-    <div class="brand"><b>药理学</b><span>1709 questions</span></div>
+    <div class="brand"><b>药理学</b><span id="bank-count">1709 questions</span></div>
     <nav class="nav" id="nav"></nav>
     <div class="side-foot">
       <button class="iconbtn" id="themeBtn"></button>
@@ -114,6 +143,6 @@
   </form>
 </dialog>
 <div class="sheet" id="sheet"><div class="panel" id="sheetPanel"></div></div>
-<script type="module" src="./quiz.js?v=10"></script>
+<script type="module" src="./quiz.js?v=11"></script>
 </body>
 </html>
