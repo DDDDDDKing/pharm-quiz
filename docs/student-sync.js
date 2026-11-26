@@ -1,4 +1,4 @@
-import { request } from './api.js?v=6';
+import { request } from './api.js?v=10';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -67,12 +67,16 @@ export function applyEvent(state, event, isCorrect) {
   }
 }
 
-export async function connectProgress(credential, login, callbacks) {
-  const hash = await crypto.subtle.digest('SHA-256', encoder.encode('pharm-outbox:' + credential));
+async function journal(phrase) {
+  const hash = await crypto.subtle.digest('SHA-256', encoder.encode('pharm-outbox:' + phrase));
   const name = Array.from(new Uint8Array(hash), n => n.toString(16).padStart(2,'0')).join('');
-  const keyMaterial = await crypto.subtle.digest('SHA-256', encoder.encode('pharm-encryption:' + credential));
+  const keyMaterial = await crypto.subtle.digest('SHA-256', encoder.encode('pharm-encryption:' + phrase));
   const key = await crypto.subtle.importKey('raw', keyMaterial, 'AES-GCM', false, ['encrypt','decrypt']);
-  const prefix = 'pharm.pending.' + name + '.';
+  return {key, prefix:'pharm.pending.' + name + '.'};
+}
+
+export async function connectProgress(credential, login, callbacks, legacyId) {
+  const {key, prefix} = await journal(login.progressKey);
   const pending = new Map();
   let epoch = login.epoch;
   let revision = login.revision;
@@ -94,24 +98,30 @@ export async function connectProgress(credential, login, callbacks) {
       const bytes = await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, encoder.encode(JSON.stringify(item)));
       if (pending.has(item.event.id)) {
         localStorage.setItem(prefix + item.event.id, encode64(iv) + '.' + encode64(new Uint8Array(bytes)));
+        return true;
       }
     } catch {
       if (pending.has(item.event.id)) diskError = true;
     }
   }
 
-  async function recover() {
+  async function recover(storagePrefix, storageKey, migrate = false) {
     try {
-      const keys = Object.keys(localStorage).filter(id => id.startsWith(prefix));
+      const keys = Object.keys(localStorage).filter(id => id.startsWith(storagePrefix));
       for (const id of keys) {
         const stored = localStorage.getItem(id);
         if (!stored) continue;
         const [iv, bytes] = stored.split('.');
         try {
-          const plain = await crypto.subtle.decrypt({name:'AES-GCM',iv:decode64(iv)}, key, decode64(bytes));
+          const plain = await crypto.subtle.decrypt({name:'AES-GCM',iv:decode64(iv)}, storageKey, decode64(bytes));
           const item = JSON.parse(decoder.decode(plain));
-          if (item.epoch === epoch) pending.set(item.event.id, item);
-          else { remove(item.event.id); resetNotice = true; }
+          if (item.epoch === epoch) {
+            pending.set(item.event.id, item);
+            if (migrate && await persist(item)) localStorage.removeItem(id);
+          } else {
+            localStorage.removeItem(id);
+            resetNotice = true;
+          }
         } catch { diskError = true; }
       }
     } catch { diskError = true; }
@@ -187,7 +197,11 @@ export async function connectProgress(credential, login, callbacks) {
     return inFlight;
   }
 
-  await recover();
+  await recover(prefix, key);
+  if (legacyId) {
+    const legacy = await journal(legacyId);
+    await recover(legacy.prefix, legacy.key, true);
+  }
   return {
     snapshot,
     start() { schedule(pending.size ? 0 : 30_000); },
@@ -203,6 +217,7 @@ export async function connectProgress(credential, login, callbacks) {
     flush,
     comments(action,details) { return request('student',credential,action,details); },
     explain(question) { return request('student',credential,'explain',{question}); },
+    submitAiOrder(number) { return request('student',credential,'submit_ai_order',{number}); },
     async clear() {
       while (inFlight || pending.size) {
         if (!await flush()) throw new Error('请联网并同步现有进度后再清空。');

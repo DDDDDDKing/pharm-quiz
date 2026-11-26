@@ -1,4 +1,4 @@
-export function createComments({request, loginId, questionLabel, openQuestion, escape}) {
+export function createComments({request, questionLabel, openQuestion, escape}) {
   const openPanels = new Set();
   const drafts = new Map();
   const labels = {all:'全部',mine:'我的',saved:'已收藏'};
@@ -18,7 +18,7 @@ export function createComments({request, loginId, questionLabel, openQuestion, e
       const items = data?.items.slice(0,25) || [];
       const mine = data?.mine;
       const content = items.map(comment => {
-        const author = comment.mine ? '登录 ID ' + loginId + '（我）' : '登录 ID •••• · ' + comment.authorTag;
+        const author = (comment.authorName || '学员') + (comment.mine ? '（我）' : '');
         const saved = comment.saved ? '取消收藏' : '收藏评论';
         const jump = question === null ? `<button type="button" class="btn ghost" data-jump-comment="${escape(comment.question)}">${escape(questionLabel(comment.question))}</button>` : '';
         const bookmark = comment.mine ? '' : `<button type="button" class="btn" data-bookmark="${escape(comment.id)}" aria-pressed="${comment.saved}">${saved}</button>`;

@@ -9,45 +9,53 @@
   <title>药理学刷题 · 管理端</title>
   <link rel="icon" href="../icon.svg">
   <link rel="stylesheet" href="../quiz.css?v=6">
-  <link rel="stylesheet" href="../portal.css?v=6">
+  <link rel="stylesheet" href="../portal.css?v=10">
 </head>
 <body>
 <section class="portal" id="login">
   <div class="login-card">
     <div class="portal-icon" aria-hidden="true">药</div>
     <h1>刷题管理端</h1>
-    <p>开通刷题 ID，查看学习进度</p>
+    <p>核对闲鱼订单，查看学习进度</p>
     <form class="portal-form" id="admin-form">
-      <label for="admin-id">管理员 ID</label>
-      <input id="admin-id" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="输入管理员 ID" required maxlength="128">
+      <label for="admin-username">用户名</label>
+      <input id="admin-username" type="text" autocomplete="username" spellcheck="false" autocapitalize="off" required maxlength="40">
+      <label for="admin-password">密码</label>
+      <input id="admin-password" type="password" autocomplete="current-password" required maxlength="72">
       <p id="login-error" class="form-error" role="alert"></p>
       <button class="btn primary" type="submit">登录管理端</button>
     </form>
-    <a class="portal-link" href="../?v=8">返回用户端</a>
+    <a class="portal-link" href="../?v=10">返回用户端</a>
   </div>
 </section>
 
 <main class="admin-shell" id="dashboard" hidden>
   <header>
     <div><h1>刷题管理端</h1><small id="admin-account"></small></div>
-    <div><a href="../?v=8">打开用户端</a><button type="button" id="sign-out">退出登录</button></div>
+    <div><a href="../?v=10">打开用户端</a><button type="button" id="sign-out">退出登录</button></div>
   </header>
   <section class="admin-card">
-    <h2>添加刷题 ID</h2>
-    <form id="add-form" class="portal-form admin-form">
-      <div class="admin-field">
-        <label for="new-student-id">刷题 ID</label>
-        <input id="new-student-id" type="text" required maxlength="128" autocomplete="off" spellcheck="false" autocapitalize="off">
-      </div>
-      <div class="admin-field">
-        <label for="student-label">姓名或备注（选填）</label>
-        <input id="student-label" type="text" maxlength="80" autocomplete="off">
-      </div>
-      <button class="btn primary" type="submit">添加 ID</button>
-    </form>
-    <div class="issued" id="issued" hidden>
-      <p>请把这个 ID 发给对应学员，对方按原样输入即可登录。</p>
-      <div><input id="issued-id" type="text" readonly aria-label="已开通的刷题 ID"><button class="btn" type="button" id="copy-id">复制</button></div>
+    <h2>闲鱼订单</h2>
+    <p>注册订单可先开通。核验不通过时，平台会停用对应账号。AI 订单审核通过后发放 100 次额度。</p>
+    <div class="order-toolbar">
+      <label for="order-filter">审核状态</label>
+      <select id="order-filter">
+        <option value="pending">待核对</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">未通过</option>
+      </select>
+      <button class="btn" type="button" id="orders-reload">刷新</button>
+    </div>
+    <p id="orders-empty" hidden>没有这个状态的订单。</p>
+    <div class="admin-table-wrap" id="orders-table-wrap" hidden>
+      <table class="admin-table">
+        <thead><tr><th scope="col">闲鱼订单编号</th><th scope="col">类型</th><th scope="col">学员</th><th scope="col">提交时间</th><th scope="col">操作</th></tr></thead>
+        <tbody id="orders-table"></tbody>
+      </table>
+    </div>
+    <div class="order-toolbar" id="orders-pages" hidden>
+      <button class="btn" type="button" id="orders-prev">上一页</button>
+      <button class="btn" type="button" id="orders-next">下一页</button>
     </div>
     <p class="admin-feedback" id="feedback" role="status"></p>
   </section>
@@ -57,7 +65,7 @@
       <h2>学员与学习进度 <small id="student-count"></small></h2>
       <button class="btn" type="button" id="reload">刷新</button>
     </header>
-    <p id="empty-list">还没有学员，添加后可在此查看。</p>
+    <p id="empty-list">还没有学员，注册后可在此查看。</p>
     <div class="admin-table-wrap" id="table-wrap" hidden>
       <table class="admin-table">
         <thead><tr><th scope="col">学员</th><th scope="col">状态</th><th scope="col">已练题数</th><th scope="col">作答次数</th><th scope="col">正确率</th><th scope="col">错题</th><th scope="col">最近活动</th><th scope="col">AI 额度</th><th scope="col">操作</th></tr></thead>
@@ -101,6 +109,6 @@
     <button type="button" class="btn" id="quota-close">关闭</button>
   </dialog>
 </main>
-<script type="module" src="./admin.js?v=8"></script>
+<script type="module" src="./admin.js?v=10"></script>
 </body>
 </html>
