@@ -81,3 +81,15 @@ button:disabled { cursor: default; }
 .quota-dialog { width:min(94vw,460px); margin:auto; color:var(--ink); }
 .quota-dialog::backdrop { background:#0006; }
 .quota-dialog form + form { margin-top:18px; }
+
+.auth-links { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
+.auth-links button { color:var(--accent); padding:6px 0; font-size:13px; }
+.login-card .auth-note { margin:0 0 3px; font-size:13px; overflow-wrap:anywhere; }
+.login-card .auth-message { margin:10px 0; font-size:13px; color:var(--ink2); }
+.login-card .auth-message[data-error='true'] { color:var(--bad); }
+
+.purchase-link { display:inline-flex; align-items:center; justify-content:center; min-height:44px; width:fit-content; text-decoration:none; }
+#ai-purchase-dialog .purchase-link { margin:0 0 14px; }
+.order-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 8px; }
+.order-toolbar select { font:inherit; color:var(--ink); background:var(--surf); padding:6px; border:1px solid var(--line); border-radius:7px; }
+.order-actions { display:flex; gap:10px; }
