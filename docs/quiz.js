@@ -1,8 +1,9 @@
-import {AI_UPGRADE_CREDITS, isValidId, request} from './api.js?v=7';
-import {connectProgress, emptyProgress, clearQuestionRecords} from './student-sync.js?v=6';
+import {request} from './api.js?v=10';
+import {setupStudentAuth} from './student-auth.js?v=10';
+import {connectProgress, emptyProgress, clearQuestionRecords} from './student-sync.js?v=10';
 
 import {done, matches, reviewQuestions, answerCardStatus} from './study.js?v=6';
-import {createComments} from './comments.js?v=6';
+import {createComments} from './comments.js?v=10';
 
 let chapter = 0, chapterFilter = 'all', chapterMode = 'practice';
 let aiAnswers = new Map();
@@ -340,7 +341,7 @@ function renderPractice(){
       <button class="btn" data-study="explain" ${aiAnswers.get(q.id)?.loading?'disabled':''}>${aiAnswers.get(q.id)?.loading?'AI 正在解析…':'AI 一键解析'}</button>
       <p class="tiny">AI 解析用于学习参考，请对照教材核实。</p>
       <div class="ai-answer" id="ai-answer" aria-live="polite">${esc(aiAnswers.get(q.id)?.text||'')}</div>
-      <p id="ai-upgrade" class="tiny" ${aiAnswers.get(q.id)?.limited?'':'hidden'}>额外 ${AI_UPGRADE_CREDITS} 次 AI 解析计划定价 ¥4.9，自动收款暂未开通。每天先用免费额度，再扣加购余额。付款或额度到账异常请联系 <a href="mailto:HenryKirschman0846@outlook.com">HenryKirschman0846@outlook.com</a>，邮件中请附订单号（如有）。</p>
+      <button id="ai-upgrade" class="btn" data-study="ai-purchase" ${aiAnswers.get(q.id)?.limited?'':'hidden'}>加购 100 次 AI 解析</button>
     </section>
     <div class="pfoot fix">
       <button class="btn ghost favbtn ${isFav?'on':''}" data-act="fav">${ICON.star}${isFav?'已收藏':'收藏'}</button>
@@ -865,71 +866,54 @@ function returnToLogin(message = '') {
   clearTimeout(timerId);
   for (const selector of ['#main','#nav','#mnav','#sheetPanel','#account-label']) $(selector).replaceChildren();
   $('#about').classList.remove('on');
+  if ($('#ai-purchase-dialog').open) $('#ai-purchase-dialog').close();
+  $('#ai-order-form').reset();
+  $('#ai-order-feedback').textContent = '提交后，管理员核对订单并发放额度。';
+  $('#ai-order-feedback').dataset.error = 'false';
   $('#sheet').classList.remove('on');
   $('#quiz').hidden = true;
   $('#mnav').hidden = true;
   $('#login').hidden = false;
   document.documentElement.dataset.theme = 'light';
-  $('#login-error').textContent = message;
-  $('#student-id').focus();
+  auth.showLogin(message);
 }
 
-$('#student-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const input = $('#student-id');
-  const submit = event.currentTarget.querySelector('button[type="submit"]');
-  const credential = input.value;
-  $('#login-error').textContent = '';
-  if (!isValidId(credential)) {
-    $('#login-error').textContent = '请输入管理端发给你的刷题 ID。';
-    return;
-  }
-  submit.disabled = true;
-  submit.textContent = '正在登录…';
-  try {
-    const result = await request('student', credential, 'login');
-    if (!Array.isArray(result.bank?.qs) || !Array.isArray(result.bank?.sections)) throw new Error('题库暂不可用，请稍后重试。');
-    QS = result.bank.qs;
-    SEC = result.bank.sections;
-    QMAP = new Map(QS.map(q => [q.id, q]));
-    BY_SEC = SEC.map(section => QS.filter(q => q.sec === section.i));
-    sync = await connectProgress(credential, result, {
-      status(text, error) {
-        const status = $('#sync-status');
-        status.textContent = text;
-        status.dataset.state = error ? 'error' : 'ok';
-      },
-      isCorrect(id, selection) { return sameSet(selection, QMAP.get(id)?.a || []); },
-      update: updateProgress,
-      denied: returnToLogin
-    });
-    const connection = sync;
-    mountComments = createComments({
-      request: (action,details) => connection.comments(action,details),
-      loginId: credential,
-      escape: esc,
-      questionLabel(id) {
-        const q = QMAP.get(id);
-        return q ? SEC[q.sec].name+' · 第 '+q.num+' 题' : '查看原题';
-      },
-      openQuestion(id) { startSession({title:'评论原题',ids:[id],mode:'single'}); }
-    });
-    $('#account-label').textContent = '登录 ID ' + credential;
-    $('#sync-status').textContent = '已同步';
-    $('#sync-status').dataset.state = 'ok';
-    input.value = '';
-    $('#login').hidden = true;
-    $('#quiz').hidden = false;
-    $('#mnav').hidden = false;
-    updateProgress(sync.snapshot(), false);
-    go('home');
-    sync.start();
-  } catch (error) {
-    $('#login-error').textContent = error.message;
-  } finally {
-    submit.disabled = false;
-    submit.textContent = '登录刷题';
-  }
+const auth = setupStudentAuth(async (credential, legacyId) => {
+  const result = await request('student', credential, 'login');
+  if (!Array.isArray(result.bank?.qs) || !Array.isArray(result.bank?.sections)) throw new Error('题库暂不可用，请稍后重试。');
+  QS = result.bank.qs;
+  SEC = result.bank.sections;
+  QMAP = new Map(QS.map(q => [q.id, q]));
+  BY_SEC = SEC.map(section => QS.filter(q => q.sec === section.i));
+  sync = await connectProgress(credential, result, {
+    status(text, error) {
+      const status = $('#sync-status');
+      status.textContent = text;
+      status.dataset.state = error ? 'error' : 'ok';
+    },
+    isCorrect(id, selection) { return sameSet(selection, QMAP.get(id)?.a || []); },
+    update: updateProgress,
+    denied: returnToLogin
+  }, legacyId);
+  const connection = sync;
+  mountComments = createComments({
+    request: (action,details) => connection.comments(action,details),
+    escape: esc,
+    questionLabel(id) {
+      const q = QMAP.get(id);
+      return q ? SEC[q.sec].name+' · 第 '+q.num+' 题' : '查看原题';
+    },
+    openQuestion(id) { startSession({title:'评论原题',ids:[id],mode:'single'}); }
+  });
+  $('#account-label').textContent = result.nickname;
+  $('#sync-status').textContent = '已同步';
+  $('#sync-status').dataset.state = 'ok';
+  $('#login').hidden = true;
+  $('#quiz').hidden = false;
+  $('#mnav').hidden = false;
+  updateProgress(sync.snapshot(), false);
+  go('home');
+  sync.start();
 });
 
 $('#sign-out').addEventListener('click', async event => {
@@ -1063,16 +1047,20 @@ document.addEventListener('click', async event=>{
   }
   if(action==='mastered'){DB[action][q.id]=!DB[action][q.id];saveDB();renderPractice();return;}
   if(action==='wrong'){const index=DB.wrong.indexOf(q.id);if(index<0)DB.wrong.push(q.id);else DB.wrong.splice(index,1);saveDB();renderPractice();return;}
+  if(action==='ai-purchase'){openAiPurchase();return;}
   if(action==='explain'){
     const session=SESS;
+    const connection=sync;
+    if(!connection)return;
     aiAnswers.set(q.id,{loading:true,text:'正在请求 AI 解析…'});renderPractice();
     try {
-      const result=await sync.explain(q.id);
-      if(!sync)return;
+      const result=await connection.explain(q.id);
+      if(sync!==connection)return;
       aiAnswers.set(q.id,{text:result.answer});
     } catch(error) {
-      if(!sync)return;
+      if(sync!==connection)return;
       aiAnswers.set(q.id,{text:error.message,limited:error.code==='ai_limit'});
+      if(error.code==='ai_limit' && SESS===session && cur()?.id===q.id)openAiPurchase();
     }
     if(SESS===session && cur()?.id===q.id){
       const box=$('#ai-answer');if(box)box.textContent=aiAnswers.get(q.id)?.text||'';
@@ -1081,5 +1069,40 @@ document.addEventListener('click', async event=>{
       const button=document.querySelector('[data-study="explain"]');
       if(button){button.disabled=false;button.textContent='重新生成解析';}
     }
+  }
+});
+
+
+function openAiPurchase() {
+  const dialog = $('#ai-purchase-dialog');
+  if (!dialog.open) dialog.showModal();
+}
+
+$('#close-ai-purchase').addEventListener('click', () => $('#ai-purchase-dialog').close());
+$('#ai-order-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const connection = sync;
+  if (!connection) return;
+  const button = event.submitter || event.currentTarget.querySelector('[type="submit"]');
+  const input = $('#ai-order-number');
+  const feedback = $('#ai-order-feedback');
+  button.disabled = true;
+  feedback.dataset.error = 'false';
+  feedback.textContent = '正在提交…';
+  try {
+    const result = await connection.submitAiOrder(input.value);
+    if (sync !== connection) return;
+    feedback.textContent = {
+      pending: '订单已提交，管理员核对后会发放 100 次额外额度。',
+      approved: '这笔订单已到账。',
+      rejected: '这笔订单核验未通过，请联系管理员。'
+    }[result.status];
+    input.value = '';
+  } catch (error) {
+    if (sync !== connection) return;
+    feedback.dataset.error = 'true';
+    feedback.textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 });
