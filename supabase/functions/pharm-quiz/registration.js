@@ -1,5 +1,5 @@
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const otpPattern = /^[0-9]{6}$/;
+const otpPattern = /^[0-9]{6,10}$/;
 const endOfLine = /[\r\n\0]/;
 const adminName = /^[a-z0-9_.-]{1,40}$/;
 const encoder = new TextEncoder();
