@@ -1,4 +1,4 @@
-import {isValidId, request} from '../api.js?v=6';
+import {AI_UPGRADE_CREDITS, isValidId, request} from '../api.js?v=7';
 
 const $ = selector => document.querySelector(selector);
 const seenFormat = new Intl.DateTimeFormat('zh-CN', {
@@ -272,8 +272,10 @@ $('#balance-form').onsubmit = event => {
   const adjustment = Number($('#quota-adjustment').value);
   if (adjustment) void updateQuota(event.submitter,{adjustment});
 };
-$('#quota-package').onclick = event => {
-  if (confirm('确认已经收到 ¥9.9 并为该学员增加 1,000 次？')) {
-    void updateQuota(event.currentTarget,{adjustment:1000});
+const packageButton = $('#quota-package');
+packageButton.textContent = `确认到账后加 ${AI_UPGRADE_CREDITS} 次`;
+packageButton.onclick = event => {
+  if (confirm(`确认已经收到 ¥9.9，并为该学员增加 ${AI_UPGRADE_CREDITS} 次 AI 解析？`)) {
+    void updateQuota(event.currentTarget,{adjustment:AI_UPGRADE_CREDITS});
   }
 };

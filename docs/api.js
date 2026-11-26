@@ -6,6 +6,8 @@ export function normalizeId(value) {
   return value.trim().toUpperCase();
 }
 
+export const AI_UPGRADE_CREDITS = 100;
+
 export function isValidId(value) {
   return value.length <= 128 && value.trim().length > 0 && !/[\r\n\0]/.test(value);
 }
