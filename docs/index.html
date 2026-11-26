@@ -50,7 +50,7 @@
       <p class="auth-note" id="verification-note"></p>
       <label for="verification-code">邮箱验证码</label>
       <input id="verification-code" type="text" inputmode="numeric" autocomplete="one-time-code"
-        pattern="[0-9]{6}" maxlength="6" required>
+        pattern="[0-9]{6,10}" maxlength="10" required>
       <label for="verification-password">设置密码</label>
       <input id="verification-password" type="password" autocomplete="new-password" minlength="8"
         maxlength="72" required placeholder="至少 8 个字符">
