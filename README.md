@@ -22,7 +22,7 @@ GitHub Pages 发布 main 分支的 /docs。Supabase schema 在 supabase/schema.s
 1. 按编号在现有项目应用 `supabase/migrations/` 内两项增量迁移。新建数据库先运行 `supabase/schema.sql`。
 2. Supabase Authentication 的 Email Provider 开启邮箱注册和 Confirm Email。Auth Hooks 启用 Before User Created，选择 Postgres 函数 `public.pharm_quiz_signup_hook`。维护窗口内先启用授权钩子，再开放新页面。
 3. 在 Authentication 的 SMTP Settings 开启 Custom SMTP。主机填 `smtp.163.com`，端口填 `465`，用户名和发件邮箱填同一个网易 163 邮箱，密码填该邮箱的客户端授权码，显示名可填「药理学刷题」。检查 Send Email Hook 处于停用状态，以使用 SMTP。
-4. Authentication 邮件模板的 Confirm signup 和 Reset password 均加入 `{{ .Token }}`。验证码长度设为 6，过期时间设为 30 分钟。发送上限按试运行人数设置。
+4. Authentication 邮件模板的 Confirm signup 和 Reset password 均加入 `{{ .Token }}`。上线前按项目实际的验证码长度和有效时间验证。发送上限按试运行人数设置。
 5. 部署 `pharm-quiz` Edge Function，包含 `index.js` 和 `registration.js`。公开请求继续使用项目 publishable key；Edge Function 负责验证学生会话并使用项目预置的 `SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`。将 GitHub Pages 设为发布 main 的 `/docs`。
 6. 用 PostgreSQL 管理员调用 `pharm.configure_admin`，传入管理员用户名及单独生成的 bcrypt 12 轮哈希。管理员密码和实际哈希通过有权限的环境配置。
 7. 发布前验证无效或已用订单编号不发码、有效格式的订单能开通、拒绝注册订单后账号停用、AI 同一订单只加一次、旧 ID 原记录及评论还在。用外部邮箱验证注册和密码重置送达，再检查新版管理员可登录。
