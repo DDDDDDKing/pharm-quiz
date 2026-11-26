@@ -119,7 +119,7 @@ export function setupStudentAuth(onReady) {
       key:keyInput.value, nickname:$('#registration-nickname').value};
     await send(details);
     pending = details;
-    $('#verification-note').textContent = '请输入发到 ' + details.email + ' 的 6 位验证码。';
+    $('#verification-note').textContent = '请输入发到 ' + details.email + ' 的验证码。';
     $('#verification-submit').textContent = details.recovery ? '验证并重置密码' : '验证并激活账号';
     show('verify');
   });
