@@ -1,4 +1,4 @@
-import {AI_UPGRADE_CREDITS, isValidId, request} from '../api.js?v=7';
+import {AI_UPGRADE_CREDITS, request} from '../api.js?v=10';
 
 const $ = selector => document.querySelector(selector);
 const seenFormat = new Intl.DateTimeFormat('zh-CN', {
@@ -9,6 +9,7 @@ let busy = false;
 let session = 0;
 let detail;
 let quotaAccount;
+let orderPage = 0;
 
 function feedback(text, error = false) {
   $('#feedback').textContent = text;
@@ -28,7 +29,7 @@ function render(students) {
     ];
     for (const value of values) row.insertCell().textContent = String(value);
     const label = document.createElement('small');
-    label.textContent = student.hint ? '登录 ID 尾号 ' + student.hint : '登录 ID 已设置';
+    label.textContent = student.hint ? '旧 ID 尾号 ' + student.hint : '';
     row.cells[0].append(document.createElement('br'),label);
 
     const button = document.createElement('button');
@@ -40,7 +41,7 @@ function render(students) {
       const result = await request('admin', id, 'list');
       if (current !== session) return;
       render(result.students);
-      feedback(student.active ? '该 ID 已停用。' : '该 ID 已恢复。');
+      feedback(student.active ? '该账号已停用。' : '该账号已恢复。');
     }));
     const inspect=document.createElement('button');
     inspect.type='button';inspect.textContent='查看作答与评论';
@@ -72,15 +73,18 @@ function signOut(message = '') {
   $('#admin-account').textContent = '';
   $('#login').hidden = false;
   $('#login-error').textContent = message;
-  $('#new-student-id').value = '';
-  $('#student-label').value = '';
-  $('#issued-id').value = '';
-  $('#issued').hidden = true;
+  orderPage = 0;
+  $('#order-filter').value = 'pending';
+  $('#order-filter').disabled = false;
+  $('#orders-table').replaceChildren();
+  $('#orders-table-wrap').hidden = true;
+  $('#orders-empty').hidden = true;
+  $('#orders-pages').hidden = true;
   feedback('');
   detail=null;$('#student-detail').hidden=true;$('#detail-content').replaceChildren();
   $('#ai-key').value='';$('#ai-state').textContent='';
   render([]);
-  $('#admin-id').focus();
+  $('#admin-username').focus();
 }
 
 async function run(button, action) {
@@ -88,6 +92,7 @@ async function run(button, action) {
   busy = true;
   const current = session;
   button.disabled = true;
+  orderFilter.disabled = true;
   feedback('');
   try {
     await action(credential, current);
@@ -97,35 +102,44 @@ async function run(button, action) {
       else feedback(error.message, true);
     }
   } finally {
-    if (session === current) busy = false;
+    if (session === current) {
+      busy = false;
+      orderFilter.disabled = false;
+    }
     button.disabled = false;
   }
 }
 
 $('#admin-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const key = $('#admin-id').value;
+  const username = $('#admin-username').value.trim();
+  const password = $('#admin-password').value;
   const button = event.currentTarget.querySelector('button[type="submit"]');
   $('#login-error').textContent = '';
-  if (!isValidId(key)) {
-    $('#login-error').textContent = '请输入完整的管理员 ID。';
-    return;
-  }
   button.disabled = true;
   button.textContent = '正在登录…';
   try {
-    const result = await request('admin', key, 'list');
+    const {token} = await request('auth', undefined, 'admin_sign_in', {username, password});
+    $('#admin-password').value = '';
+    const result = await request('admin', token, 'list');
     session++;
-    credential = key;
-    $('#admin-id').value = '';
+    const current = session;
+    credential = token;
     render(result.students);
     $('#login').hidden = true;
     $('#dashboard').hidden = false;
-    $('#admin-account').textContent = '登录 ID ' + key;
+    $('#admin-account').textContent = username;
     try {
-      const settings=await request('admin',key,'ai_settings');
-      if(credential===key){showAiSettings(settings);}
-    }catch(error){if(credential===key)$('#ai-state').textContent=error.message;}
+      const settings = await request('admin',token,'ai_settings');
+      if (session === current) showAiSettings(settings);
+    } catch(error) {
+      if (session === current) $('#ai-state').textContent = error.message;
+    }
+    try {
+      await loadOrders(token, current);
+    } catch(error) {
+      if (session === current) feedback(error.message, true);
+    }
   } catch (error) {
     $('#login-error').textContent = error.message;
   } finally {
@@ -134,25 +148,87 @@ $('#admin-form').addEventListener('submit', async event => {
   }
 });
 
-$('#add-form').addEventListener('submit', event => {
-  event.preventDefault();
-  const button = event.currentTarget.querySelector('button[type="submit"]');
-  const input = $('#new-student-id');
-  const studentId = input.value;
-  const label = $('#student-label').value.trim();
-  if (!isValidId(studentId)) { feedback('请输入要开通的刷题 ID。', true); return; }
-  $('#issued').hidden = true;
-  void run(button, async (id, current) => {
-    const issued = await request('admin', id, 'add', {studentId, label});
+const orderFilter = $('#order-filter');
+const ordersBody = $('#orders-table');
+const orderDate = new Intl.DateTimeFormat('zh-CN', {dateStyle:'short',timeStyle:'short',timeZone:'Asia/Shanghai'});
+
+function reviewButton(label, status, order) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.dataset.order = order.number;
+  button.dataset.orderStatus = status;
+  return button;
+}
+
+function renderOrders(orders, status) {
+  ordersBody.replaceChildren();
+  $('#orders-empty').hidden = orders.length > 0;
+  $('#orders-table-wrap').hidden = orders.length === 0;
+  $('#orders-pages').hidden = orderPage === 0 && orders.length <= 25;
+  $('#orders-prev').disabled = orderPage === 0;
+  $('#orders-next').disabled = orders.length <= 25;
+  for (const order of orders.slice(0,25)) {
+    const row = document.createElement('tr');
+    for (const value of [order.number, order.kind === 'ai' ? 'AI 解析 · 100 次' : '注册开通',
+      order.nickname, orderDate.format(new Date(order.submitted_at))]) {
+      const cell = row.insertCell();
+      cell.textContent = value;
+    }
+    const learner = row.cells[2];
+    const email = document.createElement('small');
+    email.textContent = order.email || '';
+    learner.append(document.createElement('br'), email);
+    const actions = row.insertCell();
+    if (status === 'pending') {
+      const group = document.createElement('div');
+      group.className = 'order-actions';
+      group.append(reviewButton(order.kind === 'ai' ? '通过并发放' : '通过', 'approved', order),
+        reviewButton(order.kind === 'ai' ? '拒绝' : '拒绝并停用', 'rejected', order));
+      actions.append(group);
+    } else {
+      actions.textContent = orderDate.format(new Date(order.reviewed_at));
+    }
+    ordersBody.append(row);
+  }
+}
+
+async function loadOrders(token, current) {
+  const status = orderFilter.value;
+  const {orders} = await request('admin', token, 'list_orders', {status,page:orderPage});
+  if (session === current) renderOrders(orders, status);
+}
+
+orderFilter.addEventListener('change', () => {
+  orderPage = 0;
+  void run($('#orders-reload'), loadOrders);
+});
+$('#orders-reload').addEventListener('click', event => void run(event.currentTarget, loadOrders));
+for (const [id, offset] of [['#orders-prev', -1], ['#orders-next', 1]]) {
+  $(id).addEventListener('click', event => {
+    void run(event.currentTarget, async (token, current) => {
+      const previous = orderPage;
+      orderPage += offset;
+      try {
+        await loadOrders(token, current);
+      } catch (error) {
+        orderPage = previous;
+        throw error;
+      }
+    });
+  });
+}
+ordersBody.addEventListener('click', event => {
+  const button = event.target.closest('button[data-order]');
+  if (!button) return;
+  void run(button, async (token, current) => {
+    await request('admin', token, 'review_order', {number:button.dataset.order,status:button.dataset.orderStatus});
     if (session !== current) return;
-    input.value = '';
-    $('#student-label').value = '';
-    $('#issued-id').value = issued.credential;
-    $('#issued').hidden = false;
-    const result = await request('admin', id, 'list');
+    const {students} = await request('admin', token, 'list');
     if (session !== current) return;
-    render(result.students);
-    feedback('已开通该刷题 ID。');
+    render(students);
+    await loadOrders(token, current);
+    if (session === current) feedback('订单审核已保存。');
   });
 });
 
@@ -165,17 +241,11 @@ $('#reload').addEventListener('click', event => {
     }
   });
 });
-$('#copy-id').addEventListener('click', async () => {
-  const input = $('#issued-id');
-  try {
-    await navigator.clipboard.writeText(input.value);
-    feedback('已复制。');
-  } catch {
-    input.select();
-    feedback('完整 ID 已选中，可以手动复制。');
-  }
+$('#sign-out').addEventListener('click', () => {
+  const token = credential;
+  signOut();
+  if (token) void request('admin', token, 'admin_sign_out').catch(() => {});
 });
-$('#sign-out').addEventListener('click', () => signOut());
 
 function renderDetail(){
   if(!detail)return;
