@@ -8,7 +8,7 @@
 <title>药理学 · 刷题</title>
 <link rel="icon" href="./icon.svg">
 <link rel="stylesheet" href="./quiz.css?v=6">
-<link rel="stylesheet" href="./portal.css?v=6">
+<link rel="stylesheet" href="./portal.css?v=10">
 </head>
 <body>
 <section class="portal" id="login">
@@ -17,13 +17,52 @@
     <h1>药理学刷题</h1>
     <p>1709 道题，覆盖 9 个部分</p>
     <form id="student-form" class="portal-form">
-      <label for="student-id">刷题 ID</label>
-      <input id="student-id" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="输入管理端发给你的 ID" required maxlength="128">
-      <p id="login-error" class="form-error" role="alert"></p>
+      <label for="student-email">邮箱</label>
+      <input id="student-email" type="email" autocomplete="username" required maxlength="254">
+      <label for="student-password">密码</label>
+      <input id="student-password" type="password" autocomplete="current-password" required maxlength="72">
       <button class="btn primary" type="submit">登录刷题</button>
+      <button class="btn ghost" type="button" data-auth-view="register">注册账号</button>
+      <div class="auth-links">
+        <button type="button" data-auth-view="legacy">旧 ID 迁移</button>
+        <button type="button" data-auth-view="recovery">忘记密码</button>
+      </div>
     </form>
+
+    <form id="registration-form" class="portal-form" hidden>
+      <label for="registration-email">邮箱（登录账号）</label>
+      <input id="registration-email" type="email" autocomplete="username" required maxlength="254">
+      <a class="btn ghost purchase-link" id="registration-purchase" href="https://m.tb.cn/h.jpobL47?tk=Bm6h66JBwVG" target="_blank" rel="noopener noreferrer">去闲鱼购买 · ¥9.90</a>
+      <label for="registration-key" id="registration-key-label">闲鱼订单编号</label>
+      <input id="registration-key" type="text" autocomplete="off" spellcheck="false" autocapitalize="off"
+        required maxlength="128" aria-describedby="registration-hint">
+      <p id="registration-hint" class="auth-note">付款后，从闲鱼订单详情复制订单编号。注册通过后，管理员会复核订单。</p>
+      <div id="registration-nickname-field" class="admin-field">
+        <label for="registration-nickname">昵称（选填）</label>
+        <input id="registration-nickname" type="text" autocomplete="nickname" maxlength="40"
+          placeholder="留空会生成“学员+四位编号”">
+      </div>
+      <button class="btn primary" type="submit">发送验证码</button>
+      <button class="btn ghost" type="button" data-auth-view="login">返回登录</button>
+    </form>
+
+    <form id="verification-form" class="portal-form" hidden>
+      <p class="auth-note" id="verification-note"></p>
+      <label for="verification-code">邮箱验证码</label>
+      <input id="verification-code" type="text" inputmode="numeric" autocomplete="one-time-code"
+        pattern="[0-9]{6}" maxlength="6" required>
+      <label for="verification-password">设置密码</label>
+      <input id="verification-password" type="password" autocomplete="new-password" minlength="8"
+        maxlength="72" required placeholder="至少 8 个字符">
+      <button class="btn primary" id="verification-submit" type="submit">验证并激活账号</button>
+      <div class="auth-links">
+        <button type="button" id="resend-code">重新发送</button>
+        <button type="button" data-auth-view="login">返回登录</button>
+      </div>
+    </form>
+    <p id="login-error" class="auth-message" role="alert" hidden></p>
     <p class="tiny">开通或登录异常请联系 <a href="mailto:HenryKirschman0846@outlook.com">HenryKirschman0846@outlook.com</a></p>
-    <a class="portal-link" href="./admin/?v=8">进入管理端</a>
+    <a class="portal-link" href="./admin/?v=10">进入管理端</a>
   </div>
 </section>
 <div class="app" id="quiz" hidden>
@@ -53,7 +92,7 @@
       <li>原书共 <b>1710 题</b>，本程序收录 <b>1709 题</b>；第八部分第 144 题原文选项整段缺失，无法作答，未收录。</li>
       <li>原卷有 <b>6 题</b>答案字段与逐项解析矛盾（如"下列哪项错误"却标注全选），已按解析结论校正，题面标有"答案已校正"。</li>
       <li>每题保留 <b>逐项解析</b>；较难题目附教材页码，共 143 处。</li>
-      <li>答题记录、练习进度、错题与收藏自动同步。换设备使用同一 ID 登录，即可继续练习。</li>
+      <li>答题记录、练习进度、错题与收藏自动同步。换设备使用同一邮箱登录，即可继续练习。</li>
     </ul>
     <div class="acts">
       <button class="danger" id="resetBtn">清空全部学习记录</button>
@@ -61,7 +100,20 @@
     </div>
   </div>
 </div>
+<dialog id="ai-purchase-dialog" class="admin-card quota-dialog" aria-labelledby="ai-purchase-title">
+  <h2 id="ai-purchase-title">¥4.90 解锁 100 次额外 AI 解析</h2>
+  <p>加购次数独立于每日免费额度，可跨天使用。每天先用免费次数，用完后再扣加购次数。</p>
+  <a class="btn primary purchase-link" href="https://m.tb.cn/h.joxwA6C?tk=TsYv66rZjFF" target="_blank" rel="noopener noreferrer">去闲鱼购买 · ¥4.90</a>
+  <form id="ai-order-form" class="portal-form">
+    <label for="ai-order-number">闲鱼订单编号</label>
+    <input id="ai-order-number" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{15,24}"
+      maxlength="24" required placeholder="粘贴付款后的订单编号">
+    <p id="ai-order-feedback" class="admin-feedback" role="status">提交后，管理员核对订单并发放额度。</p>
+    <button class="btn primary" type="submit">提交订单</button>
+    <button class="btn ghost" id="close-ai-purchase" type="button">关闭</button>
+  </form>
+</dialog>
 <div class="sheet" id="sheet"><div class="panel" id="sheetPanel"></div></div>
-<script type="module" src="./quiz.js?v=8"></script>
+<script type="module" src="./quiz.js?v=10"></script>
 </body>
 </html>
