@@ -340,7 +340,7 @@ function renderPractice(){
       <button class="btn" data-study="explain" ${aiAnswers.get(q.id)?.loading?'disabled':''}>${aiAnswers.get(q.id)?.loading?'AI 正在解析…':'AI 一键解析'}</button>
       <p class="tiny">AI 解析用于学习参考，请对照教材核实。</p>
       <div class="ai-answer" id="ai-answer" aria-live="polite">${esc(aiAnswers.get(q.id)?.text||'')}</div>
-      <p id="ai-upgrade" class="tiny" ${aiAnswers.get(q.id)?.limited?'':'hidden'}>¥9.9 可加购额外 ${AI_UPGRADE_CREDITS} 次 AI 解析。每天先用免费额度，再扣加购余额。联系 <a href="mailto:HenryKirschman0846@outlook.com">HenryKirschman0846@outlook.com</a> 购买，邮件中请注明刷题 ID。</p>
+      <p id="ai-upgrade" class="tiny" ${aiAnswers.get(q.id)?.limited?'':'hidden'}>额外 ${AI_UPGRADE_CREDITS} 次 AI 解析计划定价 ¥4.9，自动收款暂未开通。每天先用免费额度，再扣加购余额。付款或额度到账异常请联系 <a href="mailto:HenryKirschman0846@outlook.com">HenryKirschman0846@outlook.com</a>，邮件中请附订单号（如有）。</p>
     </section>
     <div class="pfoot fix">
       <button class="btn ghost favbtn ${isFav?'on':''}" data-act="fav">${ICON.star}${isFav?'已收藏':'收藏'}</button>

@@ -1,9 +1,9 @@
 # 药理学刷题
 
-- [用户端](https://ddddddking.github.io/pharm-quiz/?v=5)
-- [管理端](https://ddddddking.github.io/pharm-quiz/admin/?v=5)
+- [用户端](https://ddddddking.github.io/pharm-quiz/?v=8)
+- [管理端](https://ddddddking.github.io/pharm-quiz/admin/?v=8)
 
-管理员填写学员 ID，学员按原样输入 ID 登录。所有页面通过服务器验证准入。
+现阶段由管理员填写学员 ID，学员按原样输入 ID 登录。所有页面通过服务器验证准入。
 
 支持章节全题目录、未刷/已刷/待复习错题/历史错题/收藏/已掌握筛选、练习/背题/测试、题目评论、收藏评论、单题重做、错题重练、智能复习和按个人记录组卷。登录后的学员可以查看公开评论。评论作者本人可看到完整登录 ID，其他学员看到遮罩及固定区分标识。旧笔记可以由原作者主动发布为评论。管理端可查看每位学员的题目作答统计与评论。
 
@@ -13,4 +13,4 @@ AI 一键解析需要管理员在后台配置模型服务商、模型 ID 和 API
 
 GitHub Pages 发布 main 分支的 /docs。Supabase schema 在 supabase/schema.sql，API 在 supabase/functions/pharm-quiz/index.js。
 
-普通学员默认每天有 20 次免费解析，按北京时间换日。管理员可为单个学员调整每日免费次数或升级余额。用完每日额度后才消耗升级余额。¥9.9 对应额外 100 次解析，余额可跨天使用。学员通过邮件联系，管理员确认到账后充值。
+普通学员默认每天有 20 次免费解析，按北京时间换日。管理员可为单个学员调整每日免费次数或升级余额。用完每日额度后才消耗升级余额。计划支持 ¥9.9 自助开通刷题 ID、¥4.9 加购 100 次 AI 解析。加购余额可跨天使用。自动收款暂未开通。付款或额度到账异常可联系 HenryKirschman0846@outlook.com。

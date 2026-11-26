@@ -275,7 +275,7 @@ $('#balance-form').onsubmit = event => {
 const packageButton = $('#quota-package');
 packageButton.textContent = `确认到账后加 ${AI_UPGRADE_CREDITS} 次`;
 packageButton.onclick = event => {
-  if (confirm(`确认已经收到 ¥9.9，并为该学员增加 ${AI_UPGRADE_CREDITS} 次 AI 解析？`)) {
+  if (confirm(`确认已核对到账记录，并为该学员补发 ${AI_UPGRADE_CREDITS} 次 AI 解析？`)) {
     void updateQuota(event.currentTarget,{adjustment:AI_UPGRADE_CREDITS});
   }
 };
