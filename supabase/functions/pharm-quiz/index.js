@@ -1,14 +1,20 @@
+import {
+  authCall, databaseCall, handleRegistration, normalizeOrder, registrationReply
+} from './registration.js';
+
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
 const allowedOrigins = new Set(['https://ddddddking.github.io']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const questionId = /^[1-9]-[0-9]{1,3}$/;
 const allowedModes = new Set(['seq', 'random', 'wrong', 'fav', 'exam', 'search', 'single', 'review', 'smart', 'read']);
 const maxBody = 512_000;
+const orderLengths = new Set((Deno.env.get('PHARM_ORDER_LENGTHS') || '19').split(',')
+  .map(Number).filter(length => Number.isInteger(length) && length >= 15 && length <= 24));
+
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const isValidId = value => typeof value === 'string' && value.length <= 128
-  && value.trim().length > 0 && value.isWellFormed() && !/[\r\n\0]/.test(value);
 const isInt = (value, max) => Number.isSafeInteger(value) && value >= 0 && value <= max;
 const isSection = value => /^s[0-8]$/.test(value);
 const isSelection = value => Array.isArray(value) && value.length > 0 && value.length <= 6
@@ -100,7 +106,21 @@ Deno.serve(async req => {
   }
   if (!isObject(input)) return reply({error:'invalid_request'}, 400);
   const { role, action, credential } = input;
-  if ((role !== 'student' && role !== 'admin') || !isValidId(credential)) return reply({error:'access_denied'}, 403);
+  const rpc = (name, data) => databaseCall(supabaseUrl, serviceKey, name, data);
+  const runAuth = (...args) => authCall(supabaseUrl, anonKey, ...args);
+  if (role === 'auth') {
+    if (!anonKey) return reply({error:'service_unavailable'}, 503);
+    try {
+      return await handleRegistration(input, runAuth, rpc, reply, orderLengths);
+    } catch (error) {
+      console.error('Pharmacology Auth request failed', error?.name);
+      return reply({error:'service_unavailable'}, 503);
+    }
+  }
+  if (role === 'admin' ? typeof credential !== 'string' || !uuid.test(credential) : role !== 'student'
+      || typeof credential !== 'string' || credential.length > 8192 || !anonKey) {
+    return reply({error:'access_denied'}, 403);
+  }
 
   const commentActions = ['comments','comment_save','comment_delete','comment_bookmark'];
   const commenting = role === 'student' && commentActions.includes(action);
@@ -121,14 +141,21 @@ Deno.serve(async req => {
     } else if (action === 'comment_bookmark' && typeof input.comment === 'string'
         && uuid.test(input.comment) && typeof input.saved === 'boolean') {
       body = {comment:input.comment, saved:input.saved};
+    } else if (action === 'submit_ai_order') {
+      const number = normalizeOrder(input.number, orderLengths);
+      if (!number) return reply({error:'invalid_order'}, 400);
+      body = {number};
     } else if (action === 'explain' && typeof input.question === 'string' && questionId.test(input.question)) {
       body = {question:input.question};
     } else if (action !== 'login') {
       return reply({error:'invalid_request'}, 400);
     }
-  } else if (action === 'add' && isValidId(input.studentId) && typeof input.label === 'string'
-      && input.label.length <= 80 && input.label.isWellFormed() && !input.label.includes('\0')) {
-    body = {student_id:input.studentId, label:input.label.trim() || '学员'};
+  } else if (action === 'list_orders' && ['pending','approved','rejected'].includes(input.status)
+      && isInt(input.page,1000)) {
+    body = {status:input.status,page:input.page};
+  } else if (action === 'review_order' && typeof input.number === 'string' && /^[0-9]{15,24}$/.test(input.number)
+      && ['approved','rejected'].includes(input.status)) {
+    body = {number:input.number,status:input.status};
   } else if (action === 'ai_save' && ['doubao','gemini','siliconflow'].includes(input.provider)
       && typeof input.model === 'string' && input.model.length > 0 && input.model.length <= 200
       && typeof input.apiKey === 'string' && input.apiKey.length <= 1024 && !/[\r\n\0]/.test(input.apiKey)
@@ -148,27 +175,44 @@ Deno.serve(async req => {
     body = {account:input.account};
   } else if (action === 'set_active' && typeof input.account === 'string' && uuid.test(input.account) && typeof input.active === 'boolean') {
     body = {account:input.account, active:input.active};
-  } else if (!['list','ai_settings'].includes(action)) {
+  } else if (!['list','ai_settings','admin_sign_out'].includes(action)) {
     return reply({error:'invalid_request'}, 400);
   }
 
   try {
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(credential));
-    const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,'0')).join('');
+    let learner;
+    let hash;
+    if (role === 'student') {
+      const user = await runAuth('user', undefined, credential, 'GET');
+      if (user.status >= 500) return reply({error:'service_unavailable'}, 503);
+      if (!user.ok || !uuid.test(user.id) || !user.email_confirmed_at || user.is_anonymous)
+        return reply({error:'access_denied'}, 403);
+      if (action === 'submit_ai_order') {
+        const order = await rpc('pharm_quiz_submit_ai_order', {p_user:user.id,p_number:body.number});
+        return order.error ? registrationReply(order, reply) : reply(order);
+      }
+      learner = await rpc('pharm_quiz_resolve_student', {p_user:user.id,p_activate:action === 'login'});
+      if (learner.error) return registrationReply(learner, reply);
+      hash = learner.hash;
+    } else {
+      const end = action === 'admin_sign_out';
+      const admin = await rpc('pharm_quiz_admin_session', {p_token:credential,p_end:end});
+      if (admin.error) return registrationReply(admin, reply);
+      if (end) return reply(admin);
+      hash = admin.hash;
+      if (action === 'list_orders' || action === 'review_order') {
+        const order = await rpc('pharm_quiz_orders', {p_hash:hash,p_action:action,p_body:body});
+        return order.error ? registrationReply(order, reply) : reply(order);
+      }
+    }
     const explaining = role === 'student' && action === 'explain';
     const rpcHeaders = {'Content-Type':'application/json',apikey:serviceKey,Authorization:`Bearer ${serviceKey}`};
-    const upstream = await fetch(`${supabaseUrl}/rest/v1/rpc/pharm_quiz_${explaining ? 'ai' : commenting ? 'comments' : role}`, {
-      method: 'POST',
-      headers: rpcHeaders,
-      body: JSON.stringify(explaining ? {p_hash:hash,p_question:body.question} : {p_hash:hash, p_action:action, p_body:body}),
-      signal: AbortSignal.timeout(15_000)
-    });
-    if (!upstream.ok) {
-      const { code } = await upstream.json().catch(() => ({}));
-      console.error('Pharmacology database request failed', role, action, upstream.status, code);
-      return reply({error:'service_unavailable'}, 503);
+    const result = await rpc('pharm_quiz_' + (explaining ? 'ai' : commenting ? 'comments' : role),
+      explaining ? {p_hash:hash,p_question:body.question} : {p_hash:hash,p_action:action,p_body:body});
+    if (learner && action === 'login' && !result.error) {
+      result.nickname = learner.nickname;
+      result.progressKey = learner.progressKey;
     }
-    const result = await upstream.json();
     if (result.error) {
       const status = {access_denied:403, id_in_use:409, invalid_request:400, ai_not_configured:409, ai_limit:429, ai_quota_update:409};
       return reply(result, status[result.error] || 404);
