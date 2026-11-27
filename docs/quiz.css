@@ -53,7 +53,7 @@ button{font-family:inherit;font-size:inherit;color:inherit;background:none;borde
 }
 [data-theme="dark"] .brand-badge{background:var(--accent-soft);color:var(--accent);border:1px solid rgba(86,193,169,.28);box-shadow:none}
 .brand b{display:block;font-size:17.5px;letter-spacing:-.01em;font-weight:720;line-height:1.2}
-.brand span{display:block;font-size:11px;color:var(--ink3);letter-spacing:.08em;margin-top:2px;text-transform:uppercase;font-variant-numeric:tabular-nums}
+.brand span:not(.brand-badge){display:block;font-size:11px;color:var(--ink3);letter-spacing:.08em;margin-top:2px;text-transform:uppercase;font-variant-numeric:tabular-nums}
 
 .nav{display:flex;flex-direction:column;gap:3px}
 .nav button{
@@ -211,7 +211,9 @@ main{flex:1;min-width:0;padding:34px 46px 96px;max-width:1060px;margin:0 auto;an
 .opt .mk svg{width:17px;height:17px;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .opt.picked{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent)}
 .opt.picked .k{background:var(--accent);border-color:var(--accent);color:#fff}
-[data-theme="dark"] .opt.picked .k{color:#0B1C18}
+[data-theme="dark"] .opt.picked .k,
+[data-theme="dark"] .opt.right .k,
+[data-theme="dark"] .opt.bad .k{color:#0B1411}
 .opt.done{cursor:default}
 .opt.right{border-color:var(--ok);background:var(--ok-soft)}
 .opt.right .k{background:var(--ok);border-color:var(--ok);color:#fff}
