@@ -160,7 +160,7 @@ main{flex:1;min-width:0;padding:34px 46px 96px;max-width:1060px;margin:0 auto;an
 
 /* ---------- practice ---------- */
 .ptop{
-  display:flex;align-items:center;gap:14px;margin-bottom:22px;position:sticky;top:45px;z-index:18;
+  display:flex;align-items:center;gap:14px;margin-bottom:22px;position:sticky;top:0;z-index:20;
   background:color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   padding:10px 0 12px;
@@ -406,7 +406,6 @@ mark{background:var(--accent-soft);color:var(--accent);border-radius:3px;padding
 @media (max-width:900px){
   .side{display:none}
   main{padding:18px 16px 160px;max-width:100%}
-  .ptop{top:44px}
   .page-head h1{font-size:23px}
   .hero{padding:20px;gap:20px;display:grid;grid-template-columns:84px 1fr;align-items:center}
   .ring{width:84px;height:84px;flex-basis:84px}

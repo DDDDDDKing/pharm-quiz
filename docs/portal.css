@@ -128,9 +128,6 @@ button:disabled { cursor: default; }
 .workspace > main { padding-top: 26px; }
 
 .account-bar {
-  position: sticky;
-  top: 0;
-  z-index: 22;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -138,9 +135,7 @@ button:disabled { cursor: default; }
   justify-content: space-between;
   min-height: 46px;
   padding: 8px 28px;
-  background: color-mix(in srgb, var(--surf) 82%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--surf);
   border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
