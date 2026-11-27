@@ -7,15 +7,18 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://qjnqnchqqbuzjvlkytjl.supabase.co; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>药理学 · 刷题</title>
 <link rel="icon" href="./icon.svg">
-<link rel="stylesheet" href="./quiz.css?v=6">
-<link rel="stylesheet" href="./portal.css?v=11">
+<link rel="stylesheet" href="./quiz.css?v=7">
+<link rel="stylesheet" href="./portal.css?v=12">
 </head>
 <body>
 <section class="portal" id="login">
   <div class="login-card">
-    <div class="portal-icon" aria-hidden="true">药</div>
+    <div class="portal-head">
+      <div class="portal-icon" aria-hidden="true">药</div>
+      <span class="portal-eyebrow">PHARMACOLOGY · 10TH ED.</span>
+    </div>
     <h1>药理学刷题</h1>
-    <p>1709 道题，覆盖 9 个部分</p>
+    <p>1709 道题，覆盖 9 个部分 · 逐项解析与云端同步</p>
     <form id="student-form" class="portal-form">
       <label for="student-email">邮箱</label>
       <input id="student-email" type="email" autocomplete="username" required maxlength="254">
@@ -61,14 +64,17 @@
       </div>
     </form>
     <p id="login-error" class="auth-message" role="alert" hidden></p>
-    <p class="tiny">开通或登录异常请联系 <a href="mailto:ShalonPigman176438@hotmail.com">ShalonPigman176438@hotmail.com</a></p>
+    <p class="tiny portal-contact">开通或登录异常请联系 <a href="mailto:ShalonPigman176438@hotmail.com">ShalonPigman176438@hotmail.com</a></p>
     <div class="portal-footer">
       <button class="portal-link" id="show-intro" type="button">题库介绍与体验</button>
     </div>
   </div>
 </section>
 <dialog id="quiz-intro" class="welcome-dialog" aria-labelledby="quiz-intro-title">
-  <div class="portal-icon" aria-hidden="true">药</div>
+  <div class="portal-head">
+    <div class="portal-icon" aria-hidden="true">药</div>
+    <span class="portal-eyebrow">OVERVIEW</span>
+  </div>
   <h2 id="quiz-intro-title">药理学 A 课程刷题</h2>
   <p>适用于某大学医学院《药理学 A》课程考试复习，收录 9 个部分、1709 道题。</p>
   <dl class="welcome-features">
@@ -86,6 +92,7 @@
   </div>
 </dialog>
 <dialog id="trial-lock" class="welcome-dialog trial-lock" aria-labelledby="trial-lock-title">
+  <span class="portal-eyebrow">FULL ACCESS</span>
   <h2 id="trial-lock-title">开通完整题库</h2>
   <p>体验范围为第一部分第 1–50 题。注册开通后，可练习全部 1709 题、使用 AI 解题并参与评论。</p>
   <div class="welcome-actions">
@@ -95,7 +102,15 @@
 </dialog>
 <div class="app" id="quiz" hidden>
   <aside class="side">
-    <div class="brand"><b>药理学</b><span id="bank-count">1709 questions</span></div>
+    <div class="brand">
+      <div class="brand-row">
+        <span class="brand-badge" aria-hidden="true">药</span>
+        <div>
+          <b>药理学</b>
+          <span id="bank-count">1709 questions</span>
+        </div>
+      </div>
+    </div>
     <nav class="nav" id="nav"></nav>
     <div class="side-foot">
       <button class="iconbtn" id="themeBtn"></button>
@@ -114,6 +129,7 @@
 <div class="mobile-nav" id="mnav" hidden></div>
 <div class="modal" id="about">
   <div class="card">
+    <span class="portal-eyebrow">ABOUT</span>
     <h3>关于题库</h3>
     <div class="sub">《药理学学习通题库精解》· 人卫第 10 版</div>
     <ul>
@@ -129,6 +145,7 @@
   </div>
 </div>
 <dialog id="ai-purchase-dialog" class="admin-card quota-dialog" aria-labelledby="ai-purchase-title">
+  <span class="portal-eyebrow">AI QUOTA</span>
   <h2 id="ai-purchase-title">¥4.90 解锁 100 次额外 AI 解析</h2>
   <p>加购次数独立于每日免费额度，可跨天使用。每天先用免费次数，用完后再扣加购次数。</p>
   <a class="btn primary purchase-link" href="https://m.tb.cn/h.jnzGxCf?tk=MaDJ6hivD7A" target="_blank" rel="noopener noreferrer">去闲鱼购买 · ¥4.90</a>
